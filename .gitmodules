@@ -6,3 +6,7 @@
 	path = tests/evm-benchmarks
 	url = https://github.com/ipsilon/evm-benchmarks
 	shallow = true
+[submodule "chain-monitor"]
+	path = chain-monitor
+	url = ./
+	branch = master
