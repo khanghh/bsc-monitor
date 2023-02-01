@@ -10,15 +10,8 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"sync"
 
 	"github.com/naoina/toml"
-)
-
-var (
-	configFile    string
-	config        map[string]interface{}
-	startupLoader sync.Once
 )
 
 // These settings ensure that TOML keys use the same names as Go struct fields.
@@ -34,22 +27,7 @@ var tomlSettings = toml.Config{
 	},
 }
 
-func ConfigFile() string {
-	return configFile
-}
-
-func LoadConfigFile(filename string) error {
-	var err error
-	startupLoader.Do(func() {
-		err = LoadTOMLConfig(filename, &config)
-		if err == nil {
-			configFile = filename
-		}
-	})
-	return err
-}
-
-func LoadTOMLConfig(filename string, conf interface{}) error {
+func loadTOMLConfig(filename string, conf interface{}) error {
 	var err error
 	var buf []byte
 	if buf, err = os.ReadFile(filename); err == nil {
@@ -58,19 +36,62 @@ func LoadTOMLConfig(filename string, conf interface{}) error {
 	return err
 }
 
-func GetConfig(tag string, conf interface{}) error {
+func saveTOMLConfig(filename string, conf interface{}) error {
+	buf, err := tomlSettings.Marshal(conf)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, buf, 0644)
+}
+
+type configStore struct {
+	fileName string
+	fileInfo os.FileInfo
+	payload  map[string]interface{}
+}
+
+func (c *configStore) getConfig(name string, cfg interface{}) error {
 	var (
 		rawConf interface{}
 		exists  bool
 	)
-	if tag == "" {
-		rawConf = config
-	} else if rawConf, exists = config[tag]; !exists {
+	if rawConf, exists = c.payload[name]; !exists {
 		return nil
 	}
 	buf, err := tomlSettings.Marshal(rawConf)
 	if err != nil {
 		return err
 	}
-	return tomlSettings.Unmarshal(buf, conf)
+	return tomlSettings.Unmarshal(buf, cfg)
+}
+
+func (c *configStore) loadConfig(name string, cfg interface{}) error {
+	fileInfo, err := os.Stat(c.fileName)
+	if err != nil {
+		return err
+	}
+	if c.fileInfo == nil || fileInfo.ModTime().After(c.fileInfo.ModTime()) {
+		if err := loadTOMLConfig(c.fileName, &c.payload); err != nil {
+			return err
+		}
+	}
+	c.fileInfo = fileInfo
+	return c.getConfig(name, cfg)
+}
+
+func (c *configStore) saveConfig(name string, cfg interface{}) error {
+	if cfg == nil {
+		delete(c.payload, name)
+	} else {
+		c.payload[name] = cfg
+	}
+	return saveTOMLConfig(c.fileName, c.payload)
+}
+
+func NewConfigStore(fileName string) *configStore {
+	cfg := &configStore{
+		fileName: fileName,
+		payload:  make(map[string]interface{}),
+	}
+	return cfg
 }

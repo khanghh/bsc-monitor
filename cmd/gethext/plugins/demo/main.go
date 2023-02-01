@@ -6,17 +6,21 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/reexec"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
 
-type demoPlugin struct {
-	ctx *plugin.PluginCtx
+type DemoConfig struct {
+	Field1 string
+	Field2 int
 }
 
-func (p *demoPlugin) execute() {
+type demoPlugin struct {
+	config DemoConfig
+}
+
+func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	runTimer := time.After(5 * time.Second)
 	countDown := 5
 	for {
@@ -26,11 +30,11 @@ func (p *demoPlugin) execute() {
 			countDown -= 1
 		case <-runTimer:
 			start := time.Now()
-			block, err := p.ctx.Eth.BlockByNumber(context.Background(), 7_099_870)
+			block, err := ctx.Eth.BlockByNumber(context.Background(), 7_099_870)
 			if err != nil {
 				log.Error("BlockByNumber", "error", err)
 			}
-			_, err = p.ctx.Eth.StateAtBlock(context.Background(), block, 100000, nil, false, true)
+			_, err = ctx.Eth.StateAtBlock(context.Background(), block, 100000, nil, false, true)
 			if err != nil {
 				log.Error("StateAndHeaderByNumber", "error", err)
 			}
@@ -48,25 +52,31 @@ func (p *demoPlugin) ProcessState(state *state.StateDB, block *types.Block, txIn
 	return nil
 }
 
-func (p *demoPlugin) OnEnable() error {
-	p.ctx.Log.Info("Demo plugin enabled!")
-	task, err := p.ctx.ReExec.RunTask(reexec.ReExecOptions{
-		StartBlock: 5000000,
-		EndBlock:   5100000,
-		Processors: []reexec.Processor{p},
-	})
-	if err != nil {
-		p.ctx.Log.Error("failed to run task", "error", err)
-		return nil
+func (p *demoPlugin) OnEnable(ctx *plugin.PluginCtx) error {
+	cfg := DemoConfig{}
+	if err := ctx.LoadConfig(&cfg); err != nil {
+		return err
 	}
-	task.Wait()
+	fmt.Println(cfg)
+
+	// ctx.Log.Info("Demo plugin enabled!")
+	// task, err := ctx.ReExec.RunTask(reexec.ReExecOptions{
+	// 	StartBlock: 5000000,
+	// 	EndBlock:   5100000,
+	// 	Processors: []reexec.Processor{p},
+	// })
+	// if err != nil {
+	// 	ctx.Log.Error("failed to run task", "error", err)
+	// 	return nil
+	// }
+	// task.Wait()
 	return nil
 }
 
-func (p *demoPlugin) OnDisable() error {
+func (p *demoPlugin) OnDisable(ctx *plugin.PluginCtx) error {
 	return nil
 }
 
 func OnLoad(ctx *plugin.PluginCtx) plugin.Plugin {
-	return &demoPlugin{ctx}
+	return &demoPlugin{}
 }
