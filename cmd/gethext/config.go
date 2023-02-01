@@ -155,7 +155,7 @@ func newNode(ctx *cli.Context, cfg *gethConfig) *node.Node {
 		cfg.Ethstats.URL = ctx.GlobalString(utils.EthStatsURLFlag.Name)
 	}
 	applyMetricConfig(ctx, cfg)
-	return nil
+	return stack
 }
 
 // makeFullNode loads geth configuration and creates the Ethereum backend.

@@ -82,6 +82,7 @@ func (m *ChainMonitor) processQueueLoop() {
 
 func (m *ChainMonitor) enqueueTxsLoop() {
 	defer m.wg.Done()
+	m.queue = make(chan *types.Transaction, m.config.ProcessQueue)
 	for {
 		select {
 		case event := <-m.newTxsEventCh:
@@ -135,6 +136,7 @@ func NewChainMonitor(cfg *Config, ethereum *eth.Ethereum) (*ChainMonitor, error)
 		return nil, err
 	}
 	return &ChainMonitor{
+		config:     cfg,
 		eth:        ethereum,
 		quitCh:     make(chan struct{}),
 		processors: make(map[string]Processor),
