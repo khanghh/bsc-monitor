@@ -29,6 +29,7 @@ type MonitorService struct {
 }
 
 func (s *MonitorService) Start() error {
+	log.Info("Starting chain monitor service.")
 	if err := s.chainMonitor.Start(); err != nil {
 		log.Error("Could not start chain monitor", "error", err)
 		return err
@@ -51,6 +52,7 @@ func (s *MonitorService) Stop() {
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
+	log.Info("Chain monitor service stopped.")
 }
 
 func NewMonitorService(opts *MonitorServiceOptions) (*MonitorService, error) {
@@ -58,11 +60,11 @@ func NewMonitorService(opts *MonitorServiceOptions) (*MonitorService, error) {
 	if err != nil {
 		return nil, err
 	}
-	pluginManager, err := plugin.NewPluginManager(opts.PluginDir, opts.Node, opts.Ethereum.APIBackend, chainMonitor)
+	taskManager, err := reexec.NewTaskManager(opts.ReExecConfig)
 	if err != nil {
 		return nil, err
 	}
-	taskManager, err := reexec.NewTaskManager(opts.ReExecConfig)
+	pluginManager, err := plugin.NewPluginManager(opts.PluginDir, opts.Node, opts.Ethereum.APIBackend, chainMonitor, taskManager)
 	if err != nil {
 		return nil, err
 	}

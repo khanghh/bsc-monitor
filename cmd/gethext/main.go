@@ -20,6 +20,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -309,7 +310,7 @@ func prepare(ctx *cli.Context) {
 func startMonitorService(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethereum) *service.MonitorService {
 	instance, err := service.NewMonitorService(&service.MonitorServiceOptions{
 		MonitorConfig: &cfg.Monitor,
-		PluginDir:     stack.ResolvePath(pluginDir),
+		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
 		Node:          stack,
 		Ethereum:      ethereum,
 	})

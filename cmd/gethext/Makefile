@@ -14,7 +14,7 @@ help:
 
 gethext: ## Build gethext
 	@echo "Building target: $@" 
-	go build -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o $(BUILD_DIR)/$@ $(CURDIR)/cmd/$@
+	go build -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o=$(BUILD_DIR)/$@ $(CURDIR)/cmd/$@
 	@echo "Done building."
 
 demo: ## Build demo plugin
@@ -24,7 +24,7 @@ ifeq ($(shell go env GOOS), darwin)
 else
 	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$@.so)
 endif
-	go build -buildmode=plugin $(LDFLAGS) -tags $(BUILD_TAGS) -o $(OUTPUT) $(CURDIR)/plugins/$@
+	go build -buildmode=plugin -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$@
 	@echo "Done building."
 
 clean: ## Clean build directory
