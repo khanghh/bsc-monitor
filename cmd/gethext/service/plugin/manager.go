@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"plugin"
 	"runtime"
@@ -21,6 +22,7 @@ import (
 )
 
 const (
+	pluginConfigFile = "config.toml"
 	pluginOnLoadFunc = "OnLoad"
 	pluginExtLinux   = ".so"
 	pluginExtDarwin  = ".dylib"
@@ -46,10 +48,11 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	pluginDir string
-	plugins   map[string]loadedPlugin
-	ctx       *sharedCtx
-	mtx       sync.Mutex
+	pluginDir   string
+	configStore *configStore
+	plugins     map[string]loadedPlugin
+	ctx         *sharedCtx
+	mtx         sync.Mutex
 }
 
 func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
@@ -66,6 +69,12 @@ func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
 		plctx := &PluginCtx{
 			sharedCtx: m.ctx,
 			Log:       newLogger(plname),
+			LoadConfig: func(cfg interface{}) error {
+				return m.configStore.loadConfig(plname, cfg)
+			},
+			SaveConfig: func(cfg interface{}) error {
+				return m.configStore.saveConfig(plname, cfg)
+			},
 		}
 		plinstance := plOnload(plctx)
 		loaded := loadedPlugin{
@@ -112,7 +121,7 @@ func (m *PluginManager) EnablePlugin(name string) error {
 		return errNotFound
 	}
 
-	if err := pl.instance.OnEnable(); err != nil {
+	if err := pl.instance.OnEnable(pl.ctx); err != nil {
 		return err
 	}
 	pl.enabled = true
@@ -122,15 +131,15 @@ func (m *PluginManager) EnablePlugin(name string) error {
 func (m *PluginManager) DisablePlugin(name string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	plCtx, isExist := m.plugins[name]
+	pl, isExist := m.plugins[name]
 	if !isExist {
 		return nil
 	}
 
-	if err := plCtx.instance.OnDisable(); err != nil {
+	if err := pl.instance.OnDisable(pl.ctx); err != nil {
 		return err
 	}
-	plCtx.enabled = false
+	pl.enabled = false
 	return nil
 }
 
@@ -145,8 +154,9 @@ func (m *PluginManager) Stop() error {
 
 func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, reexecManager ReExecManager) (*PluginManager, error) {
 	backend := &PluginManager{
-		pluginDir: pluginDir,
-		plugins:   make(map[string]loadedPlugin),
+		pluginDir:   pluginDir,
+		configStore: NewConfigStore(path.Join(pluginDir, pluginConfigFile)),
+		plugins:     make(map[string]loadedPlugin),
 		ctx: &sharedCtx{
 			Node:    node,
 			Eth:     ethBackend,

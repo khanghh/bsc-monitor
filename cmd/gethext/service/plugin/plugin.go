@@ -32,8 +32,8 @@ import (
 )
 
 type Plugin interface {
-	OnEnable() error
-	OnDisable() error
+	OnEnable(ctx *PluginCtx) error
+	OnDisable(ctx *PluginCtx) error
 }
 
 type NodeBackend interface {
@@ -123,5 +123,7 @@ type sharedCtx struct {
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
-	Log log.Logger
+	Log        log.Logger
+	LoadConfig func(cfg interface{}) error
+	SaveConfig func(cfg interface{}) error
 }
