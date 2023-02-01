@@ -100,7 +100,7 @@ func (m *PluginManager) LoadPlugins() error {
 			loaded = append(loaded, pl.name)
 		}
 	}
-	log.Info(fmt.Sprintf("Loaded %d plugins", len(loaded)), "plugins", loaded)
+	log.Info(fmt.Sprintf("Loaded %d plugin(s).", len(loaded)), "plugins", loaded)
 	return nil
 }
 
@@ -143,13 +143,15 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend) (*PluginManager, error) {
+func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, reexecManager ReExecManager) (*PluginManager, error) {
 	backend := &PluginManager{
 		pluginDir: pluginDir,
 		plugins:   make(map[string]loadedPlugin),
 		ctx: &sharedCtx{
-			Node: node,
-			Eth:  ethBackend,
+			Node:    node,
+			Eth:     ethBackend,
+			Monitor: monitorBackend,
+			ReExec:  reexecManager,
 		},
 	}
 	return backend, nil
