@@ -1,3 +1,7 @@
+// Created on 2023/2/21 by khanghh
+// Project: github.com/verichains/chain-monitor
+// Copyright (c) 2023 Verichains Lab
+
 package reexec
 
 import (
@@ -58,7 +62,7 @@ type TaskManager struct {
 	quitCh chan struct{}
 }
 
-func (tm *TaskManager) RunTask(opts ReExecOptions) (Task, error) {
+func (tm *TaskManager) RunTask(opts TaskOptions) (Task, error) {
 	return nil, nil
 }
 
