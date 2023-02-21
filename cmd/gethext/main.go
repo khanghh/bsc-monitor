@@ -337,9 +337,7 @@ func startMonitorService(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethere
 	instance, err := service.NewMonitorService(&service.MonitorServiceOptions{
 		MonitorConfig: &cfg.Monitor,
 		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
-		Node:          stack,
-		Ethereum:      ethereum,
-	})
+	}, stack, ethereum)
 	if err != nil {
 		utils.Fatalf("Could not initialize chain monitor service")
 	}
