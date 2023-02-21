@@ -105,7 +105,7 @@ type MonitorBackend interface {
 }
 
 type ReExecManager interface {
-	RunTask(taskOpts reexec.ReExecOptions) (reexec.Task, error)
+	RunTask(taskOpts reexec.TaskOptions) (reexec.Task, error)
 	KillTask(name string) error
 	GetTask(name string) (reexec.Task, error)
 }
