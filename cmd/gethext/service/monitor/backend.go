@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -24,13 +25,14 @@ type Processor interface {
 // ChainMonitor calls registed processors to process every pending
 // transactions recieved in txpool
 type ChainMonitor struct {
-	config        *Config
-	eth           *eth.Ethereum
+	config *Config
+	eth    *eth.Ethereum
+
 	processors    map[string]Processor
 	newTxsSubs    event.Subscription
 	newTxsEventCh chan core.NewTxsEvent
+	queue         chan *types.Transaction
 
-	queue  chan *types.Transaction
 	wg     sync.WaitGroup
 	mtx    sync.Mutex
 	quitCh chan struct{}
@@ -46,34 +48,35 @@ func (m *ChainMonitor) Processors() map[string]Processor {
 	return ret
 }
 
-func (m *ChainMonitor) processTx(throttler chan struct{}, tx *types.Transaction) {
-	defer func() {
-		<-throttler
-	}()
-	state, err := m.eth.BlockChain().State()
-	if err != nil {
-		log.Error("Failed to get chain state", "error", err)
-		return
-	}
-	wg := sync.WaitGroup{}
-	for procName, proc := range m.Processors() {
-		wg.Add(1)
-		go func(procName string, proc Processor) {
-			err := proc.ProcessTx(state, tx, nil)
-			log.Warn("Process pending transaction error", "processor", procName, "error", err)
-		}(procName, proc)
-	}
-	wg.Wait()
-}
-
 func (m *ChainMonitor) processQueueLoop() {
-	defer m.wg.Done()
-	throttler := make(chan struct{}, m.config.ProcessSlot)
+	throttler := NewLimitWaitGroup(m.config.ProcessSlot)
+	defer func() {
+		throttler.Wait()
+		m.wg.Done()
+	}()
+	processTx := func(throttler *LimitWaitGroup, tx *types.Transaction) {
+		defer throttler.Done()
+		state, err := m.eth.BlockChain().State()
+		if err != nil {
+			log.Error("Failed to get chain state", "error", err)
+			return
+		}
+		wg := sync.WaitGroup{}
+		for procName, proc := range m.Processors() {
+			wg.Add(1)
+			go func(procName string, proc Processor) {
+				defer wg.Done()
+				err := proc.ProcessTx(state, tx, nil)
+				log.Warn("Process pending transaction error", "processor", procName, "error", err)
+			}(procName, proc)
+		}
+		wg.Wait()
+	}
 	for {
 		select {
 		case tx := <-m.queue:
-			throttler <- struct{}{}
-			go m.processTx(throttler, tx)
+			throttler.Add()
+			go processTx(throttler, tx)
 		case <-m.quitCh:
 			return
 		}
@@ -131,7 +134,7 @@ func (m *ChainMonitor) UnregisterProcessor(name string) {
 	delete(m.processors, name)
 }
 
-func NewChainMonitor(cfg *Config, ethereum *eth.Ethereum) (*ChainMonitor, error) {
+func NewChainMonitor(cfg *Config, db ethdb.Database, ethereum *eth.Ethereum) (*ChainMonitor, error) {
 	if err := cfg.Sanitize(); err != nil {
 		return nil, err
 	}
