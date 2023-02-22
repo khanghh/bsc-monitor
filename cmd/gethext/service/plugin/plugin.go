@@ -14,8 +14,9 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/cmd/gethext/model"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/monitor"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/reexec"
+	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
@@ -104,10 +105,17 @@ type MonitorBackend interface {
 	UnregisterProcessor(name string)
 }
 
-type ReExecManager interface {
-	RunTask(taskOpts reexec.TaskOptions) (reexec.Task, error)
+type ChainIndexer interface {
+	GetAccount(addr common.Address) (*model.AccountInfo, error)
+	GetAccountAt(root common.Hash, addr common.Address) (*model.AccountInfo, error)
+	Database() ethdb.Database
+}
+
+type TaskManager interface {
+	AddTask(name string, task task.Task) error
+	RunTask(name string, task task.Task) error
+	GetTask(name string) (task.Task, error)
 	KillTask(name string) error
-	GetTask(name string) (reexec.Task, error)
 }
 
 // sharedCtx exposes common useful modules for the plugin to
@@ -116,7 +124,8 @@ type sharedCtx struct {
 	Node    *node.Node
 	Eth     EthBackend
 	Monitor MonitorBackend
-	ReExec  ReExecManager
+	Indexer ChainIndexer
+	TaskMgr TaskManager
 }
 
 // PluginCtx provides access to internal services for a plugin, each plugin
