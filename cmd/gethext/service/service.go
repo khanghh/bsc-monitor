@@ -11,9 +11,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/reexec"
+	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 )
@@ -23,19 +22,20 @@ const (
 	monitorDatabaseName   = "monitor"
 	monitorDatabaseHandle = 512
 	monitorDatabaseCache  = 1024
+	indexerTaskName       = "indexer"
 )
 
 type MonitorServiceOptions struct {
 	MonitorConfig *monitor.Config
-	ReExecConfig  *reexec.Config
+	ReExecConfig  *task.Config
 	PluginDir     string
 }
 
 type MonitorService struct {
-	db            ethdb.Database
 	chainMonitor  *monitor.ChainMonitor
+	chainIndexer  *monitor.ChainIndexer
 	pluginManager *plugin.PluginManager
-	taskManager   *reexec.TaskManager
+	taskManager   *task.TaskManager
 
 	quitCh   chan struct{}
 	quitLock sync.Mutex
@@ -51,6 +51,10 @@ func (s *MonitorService) Start() error {
 		log.Error("Could not start chain monitor", "error", err)
 		return err
 	}
+	if err := s.taskManager.RunTask(indexerTaskName, s.chainIndexer); err != nil {
+		log.Error("Could not start chain monitor", "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -62,6 +66,7 @@ func (s *MonitorService) Stop() {
 		s.taskManager.Stop()
 		s.pluginManager.Stop()
 		s.chainMonitor.Stop()
+		s.chainIndexer.Stop()
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
@@ -69,25 +74,34 @@ func (s *MonitorService) Stop() {
 }
 
 func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Ethereum) (*MonitorService, error) {
-	db, err := node.OpenDatabaseWithFreezer(monitorDatabaseName, monitorDatabaseCache, monitorDatabaseHandle, "",
+	diskdb, err := node.OpenDatabaseWithFreezer(monitorDatabaseName, monitorDatabaseCache, monitorDatabaseHandle, "",
 		monitorNamespace, false, false, false, false, true)
 	if err != nil {
 		return nil, err
 	}
-	chainMonitor, err := monitor.NewChainMonitor(opts.MonitorConfig, db, eth)
+	chainMonitor, err := monitor.NewChainMonitor(opts.MonitorConfig, diskdb, eth)
 	if err != nil {
 		return nil, err
 	}
-	taskManager, err := reexec.NewTaskManager(opts.ReExecConfig)
+
+	chainIndexer, err := monitor.NewChainIndexer(diskdb, eth.BlockChain())
 	if err != nil {
 		return nil, err
 	}
+
+	taskManager, err := task.NewTaskManager(opts.ReExecConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	pluginManager, err := plugin.NewPluginManager(opts.PluginDir, node, eth.APIBackend, chainMonitor, taskManager)
 	if err != nil {
 		return nil, err
 	}
+
 	instance := &MonitorService{
 		chainMonitor:  chainMonitor,
+		chainIndexer:  chainIndexer,
 		pluginManager: pluginManager,
 		taskManager:   taskManager,
 		quitCh:        make(chan struct{}),

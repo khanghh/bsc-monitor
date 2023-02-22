@@ -152,7 +152,7 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, reexecManager ReExecManager) (*PluginManager, error) {
+func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	backend := &PluginManager{
 		pluginDir:   pluginDir,
 		configStore: NewConfigStore(path.Join(pluginDir, pluginConfigFile)),
@@ -161,7 +161,7 @@ func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, 
 			Node:    node,
 			Eth:     ethBackend,
 			Monitor: monitorBackend,
-			ReExec:  reexecManager,
+			TaskMgr: taskMgr,
 		},
 	}
 	return backend, nil
