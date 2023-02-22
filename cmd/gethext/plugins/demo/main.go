@@ -6,10 +6,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -60,15 +58,14 @@ func (p *demoPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		return err
 	}
 
-	snap := ctx.Eth.Chain().Snapshots().Snapshot(ctx.Eth.CurrentBlock().Root())
-	hasher := crypto.NewKeccakState()
-	acc := common.HexToAddress("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3")
-	accHash := crypto.HashData(hasher, acc.Bytes())
-	accData, err := snap.AccountRLP(accHash)
-	if err != nil {
-		ctx.Log.Error("Could not read account data", "error", err)
-	}
-	fmt.Println("accData size:", len(accData))
+	// hasher := crypto.NewKeccakState()
+	// acc := common.HexToAddress("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3")
+	// accHash := crypto.HashData(hasher, acc.Bytes())
+	// accData, err := snap.AccountRLP(accHash)
+	// if err != nil {
+	// 	ctx.Log.Error("Could not read account data", "error", err)
+	// }
+	// fmt.Println("accData size:", len(accData))
 	// api := ethapi.NewPublicBlockChainAPI(ctx.Eth)
 	// fmt.Println(cfg)
 
