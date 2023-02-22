@@ -12,10 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-var (
-	nilHash = common.Hash{}
-)
-
 func ReadStateRoot(db ethdb.KeyValueReader) common.Hash {
 	data, _ := db.Get(StateRootKey)
 	if len(data) != common.HashLength {
@@ -44,13 +40,13 @@ func WriteLastIndexBlock(db ethdb.KeyValueWriter, blockHash common.Hash) {
 	}
 }
 
-func ReadAccountState(db ethdb.KeyValueReader, hash common.Hash) []byte {
-	data, _ := db.Get(accountStateKey(hash))
+func ReadAccountExtState(db ethdb.KeyValueReader, hash common.Hash) []byte {
+	data, _ := db.Get(accountExtStateKey(hash))
 	return data
 }
 
-func WriteAccountState(db ethdb.KeyValueWriter, hash common.Hash, data []byte) {
-	if err := db.Put(accountStateKey(hash), data); err != nil {
+func WriteAccountExtState(db ethdb.KeyValueWriter, hash common.Hash, data []byte) {
+	if err := db.Put(accountExtStateKey(hash), data); err != nil {
 		log.Crit("Failed to store account state", "err", err)
 	}
 }
