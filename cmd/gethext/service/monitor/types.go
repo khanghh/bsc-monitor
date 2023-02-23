@@ -13,14 +13,14 @@ var nilHash = common.Hash{}
 
 type AccountChangeSet struct {
 	SentTxs     []common.Hash
-	ReceivedTxs []common.Hash
+	InternalTxs []common.Hash
 	TokenTxs    []common.Hash
 	Holders     []common.Address
 }
 
 type AccountIndexState struct {
 	SentTxCount     uint64
-	ReceivedTxCount uint64
+	InternalTxCount uint64
 	TokenTxCount    uint64
 	HolderCount     uint64
 }
