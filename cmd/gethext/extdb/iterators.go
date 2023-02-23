@@ -104,7 +104,7 @@ func NewSentTxIterator(db ethdb.Database, addr common.Address, nonce uint64) *Tx
 }
 
 func NewReceivedTxIterator(db ethdb.Database, addr common.Address, nonce uint64) *TxTableIterator {
-	prefix := append(AccountReceivedTxPrefix, addr.Bytes()...)
+	prefix := append(AccountInternalTxPrefix, addr.Bytes()...)
 	return newTxTableIterator(db, prefix, nonce)
 }
 

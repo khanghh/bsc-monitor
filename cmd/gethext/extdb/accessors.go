@@ -41,23 +41,35 @@ func WriteLastIndexBlock(db ethdb.KeyValueWriter, blockHash common.Hash) {
 }
 
 func ReadAccountExtState(db ethdb.KeyValueReader, hash common.Hash) []byte {
-	data, _ := db.Get(accountExtStateKey(hash))
+	data, _ := db.Get(AccountExtStateKey(hash))
 	return data
 }
 
 func WriteAccountExtState(db ethdb.KeyValueWriter, hash common.Hash, data []byte) {
-	if err := db.Put(accountExtStateKey(hash), data); err != nil {
+	if err := db.Put(AccountExtStateKey(hash), data); err != nil {
 		log.Crit("Failed to store account state", "err", err)
 	}
 }
 
 func ReadAccountInfo(db ethdb.KeyValueReader, addr common.Address) []byte {
-	data, _ := db.Get(accountInfoKey(addr))
+	data, _ := db.Get(AccountInfoKey(addr))
 	return data
 }
 
 func WriteAccountInfo(db ethdb.KeyValueWriter, addr common.Address, entry []byte) {
-	if err := db.Put(accountInfoKey(addr), entry); err != nil {
+	if err := db.Put(AccountInfoKey(addr), entry); err != nil {
+		log.Crit("Failed to store account snapshot", "err", err)
+	}
+}
+
+func WriteAccountSentTx(db ethdb.KeyValueWriter, addr common.Address, tx common.Hash, index uint64) {
+	if err := db.Put(AccountSentTxKey(addr, index), tx.Bytes()); err != nil {
+		log.Crit("Failed to store account snapshot", "err", err)
+	}
+}
+
+func WriteAccountInternalTx(db ethdb.KeyValueWriter, addr common.Address, tx common.Hash, index uint64) {
+	if err := db.Put(AccountInternalTxKey(addr, index), tx.Bytes()); err != nil {
 		log.Crit("Failed to store account snapshot", "err", err)
 	}
 }
