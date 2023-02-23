@@ -108,7 +108,6 @@ type MonitorBackend interface {
 type ChainIndexer interface {
 	GetAccount(addr common.Address) (*model.AccountInfo, error)
 	GetAccountAt(root common.Hash, addr common.Address) (*model.AccountInfo, error)
-	Database() ethdb.Database
 }
 
 type TaskManager interface {

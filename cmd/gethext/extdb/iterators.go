@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
@@ -69,4 +70,45 @@ func NewTableItemIterator(db ethdb.Database, prefix []byte, index uint64) *Table
 		diskdb:       db,
 		currentIndex: index,
 	}
+}
+
+type TxTableIterator struct {
+	it *TableItemIterator
+}
+
+func (it *TxTableIterator) Next() bool {
+	return it.it.Next()
+}
+
+func (it *TxTableIterator) Prev() bool {
+	return it.it.Prev()
+}
+
+func (it *TxTableIterator) Value() common.Hash {
+	return common.HexToHash(string(it.it.Value()))
+}
+
+func (it *TxTableIterator) Error() error {
+	return it.it.Error()
+}
+
+func newTxTableIterator(db ethdb.Database, prefix []byte, index uint64) *TxTableIterator {
+	return &TxTableIterator{
+		it: NewTableItemIterator(db, prefix, index),
+	}
+}
+
+func NewSentTxIterator(db ethdb.Database, addr common.Address, nonce uint64) *TxTableIterator {
+	prefix := append(AccountSentTxPrefix, addr.Bytes()...)
+	return newTxTableIterator(db, prefix, nonce)
+}
+
+func NewReceivedTxIterator(db ethdb.Database, addr common.Address, nonce uint64) *TxTableIterator {
+	prefix := append(AccountReceivedTxPrefix, addr.Bytes()...)
+	return newTxTableIterator(db, prefix, nonce)
+}
+
+func NewTokenTxIterator(db ethdb.Database, addr common.Address, nonce uint64) *TxTableIterator {
+	prefix := append(AccountTokenTxPrefix, addr.Bytes()...)
+	return newTxTableIterator(db, prefix, nonce)
 }
