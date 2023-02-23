@@ -52,7 +52,7 @@ func (s *MonitorService) Start() error {
 		return err
 	}
 	if err := s.taskManager.RunTask(indexerTaskName, s.chainIndexer); err != nil {
-		log.Error("Could not start chain monitor", "error", err)
+		log.Error("Could not start chain indexer", "error", err)
 		return err
 	}
 	return nil
