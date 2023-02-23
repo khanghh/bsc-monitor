@@ -1,8 +1,8 @@
 package monitor
 
 import (
-	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/gethext/model"
@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type ChainIndexer struct {
@@ -19,13 +19,17 @@ type ChainIndexer struct {
 	indexdb    *IndexDB
 	blockchain *core.BlockChain
 
-	newBlockSubs     event.Subscription
-	newBlocksEventCh chan core.NewMinedBlockEvent
-	root             common.Hash
+	lastBlock *types.Block
+	blockCh   chan *types.Block
 
-	status uint32
-	mtx    sync.Mutex
-	quitCh chan struct{}
+	status  uint32
+	pauseCh chan bool
+	termCh  chan struct{}
+	quitCh  chan struct{}
+}
+
+func (idx *ChainIndexer) Database() *IndexDB {
+	return idx.indexdb
 }
 
 func (idx *ChainIndexer) Status() task.TaskStatus {
@@ -41,6 +45,42 @@ func (s *ChainIndexer) ProcessBlock(block *types.Block) error {
 	return nil
 }
 
+func (idx *ChainIndexer) indexingLoop() {
+	waitResume := func() {
+		for paused := range idx.pauseCh {
+			if !paused {
+				return
+			}
+		}
+	}
+	go func() {
+		for {
+			select {
+			case paused := <-idx.pauseCh:
+				if !paused {
+					waitResume()
+				}
+			case <-idx.quitCh:
+				close(idx.blockCh)
+				return
+			default:
+			}
+			blockNum := idx.lastBlock.NumberU64() + 1
+			if blockNum <= idx.blockchain.CurrentBlock().NumberU64() {
+				block := idx.blockchain.GetBlockByNumber(blockNum)
+				idx.blockCh <- block
+				idx.lastBlock = block
+			} else {
+				time.Sleep(time.Second)
+			}
+		}
+	}()
+	defer close(idx.termCh)
+	for block := range idx.blockCh {
+		log.Debug("Indexing block", "number", block.Number())
+	}
+}
+
 // GetAccountAt returns account and its state at specific state root
 func (s *ChainIndexer) GetAccountAt(root common.Hash, addr common.Address) (*model.Account, error) {
 	return nil, nil
@@ -52,29 +92,37 @@ func (idx *ChainIndexer) Run() {
 	if status != uint32(task.StatusPending) && status != uint32(task.StatusPaused) {
 		return
 	}
+	var lastBlock *types.Block
+	lastBlockHash := extdb.ReadLastIndexBlock(idx.diskdb)
+	if lastBlockHash == nilHash {
+		lastBlock = idx.blockchain.GetBlockByNumber(0)
+	} else {
+		lastBlock = idx.blockchain.GetBlockByHash(lastBlockHash)
+	}
+
 	// Try to update the status from pending or paused to preparing
 	if atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
 		return
 	}
-
-	lastBlock := idx.blockchain.GetBlockByHash(extdb.ReadLastIndexBlock(idx.diskdb))
-	idx.root = lastBlock.Root()
+	idx.lastBlock = lastBlock
+	log.Info("Start indexing blockchain", "number", idx.lastBlock.Number(), "root", idx.lastBlock.Root())
+	go idx.indexingLoop()
 }
 
 func (idx *ChainIndexer) Wait() {
-	<-idx.quitCh
+	<-idx.termCh
 }
 
 func (idx *ChainIndexer) Pause() {
 	// Try to update the status from running to paused
 	if atomic.CompareAndSwapUint32(&idx.status, uint32(task.StatusRunning), uint32(task.StatusPaused)) {
-		return
+		idx.pauseCh <- true
 	}
 }
 
 func (idx *ChainIndexer) Resume() {
 	if atomic.CompareAndSwapUint32(&idx.status, uint32(task.StatusPaused), uint32(task.StatusRunning)) {
-		return
+		idx.pauseCh <- false
 	}
 }
 
@@ -82,6 +130,7 @@ func (idx *ChainIndexer) Abort() {
 }
 
 func (idx *ChainIndexer) Stop() {
+	close(idx.quitCh)
 	idx.Wait()
 	atomic.SwapUint32(&idx.status, uint32(task.StatusStopped))
 }
