@@ -24,7 +24,7 @@ var (
 	ContractInfoPrefix      = []byte("c") // ContractInfoPrefix + address -> contract info
 	AccountStatePrefix      = []byte("s") // AccountStatePrefix + hash(StateAccount) -> account ext state
 	AccountSentTxPrefix     = []byte("t") // AccountSentTxPrefix + address + nonce -> transaction hash
-	AccountReceivedTxPrefix = []byte("r") // AccountReceivedTxPrefix + address + index -> transaction hash
+	AccountInternalTxPrefix = []byte("i") // AccountInternalTxPrefix + address + index -> transaction hash
 	AccountTokenTxPrefix    = []byte("x") // AccountTokenTxPrefix + address + index -> transaction hash
 )
 
@@ -32,17 +32,17 @@ var (
 	nilHash = common.Hash{}
 )
 
-func accountInfoKey(addr common.Address) []byte {
+func AccountInfoKey(addr common.Address) []byte {
 	addrHash := crypto.Keccak256Hash(addr.Bytes())
 	return append(AccountInfoPrefix, addrHash.Bytes()...)
 }
 
-func contractInfoKey(addr common.Address) []byte {
+func ContractInfoKey(addr common.Address) []byte {
 	addrHash := crypto.Keccak256Hash(addr.Bytes())
 	return append(ContractInfoPrefix, addrHash.Bytes()...)
 }
 
-func accountExtStateKey(root common.Hash) []byte {
+func AccountExtStateKey(root common.Hash) []byte {
 	return append(AccountStatePrefix, root.Bytes()...)
 }
 
@@ -58,8 +58,8 @@ func AccountSentTxKey(addr common.Address, nonce uint64) []byte {
 	return tableElementKey(AccountSentTxPrefix, addr, nonce)
 }
 
-func AccountReceivedTxKey(addr common.Address, nonce uint64) []byte {
-	return tableElementKey(AccountReceivedTxPrefix, addr, nonce)
+func AccountInternalTxKey(addr common.Address, nonce uint64) []byte {
+	return tableElementKey(AccountInternalTxPrefix, addr, nonce)
 }
 
 func AccountTokenTxKey(addr common.Address, nonce uint64) []byte {
