@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 type ChainIndexer struct {
@@ -21,6 +22,7 @@ type ChainIndexer struct {
 
 	lastBlock *types.Block
 	blockCh   chan *types.Block
+	stateRoot common.Hash
 
 	status  uint32
 	pauseCh chan bool
@@ -40,9 +42,38 @@ func (idx *ChainIndexer) GetAccount(addr common.Address) (*model.Account, error)
 	return idx.GetAccountAt(idx.blockchain.CurrentBlock().Root(), addr)
 }
 
-// TODO: implement transaction decoder
-func (s *ChainIndexer) ProcessBlock(block *types.Block) error {
-	return nil
+// processBlock generate statedb at the given block, re-execute every transaction and extract neccessary info into indexdb
+func (idx *ChainIndexer) processBlock(block *types.Block) error {
+	accStates := make(map[common.Address]interface{})
+	getAccState := func(addr common.Address) *AccountIndexState {
+		accState, exist := accStates[addr]
+		if !exist {
+			accState := new(AccountIndexState)
+			idx.indexdb.AccountExtState(idx.stateRoot, addr, accState)
+			accStates[addr] = accState
+		}
+		return accState.(*AccountIndexState)
+	}
+	batch := idx.diskdb.NewBatch()
+	signer := types.MakeSigner(idx.blockchain.Config(), block.Number())
+	txs := block.Transactions()
+	for _, tx := range txs {
+		msg, _ := tx.AsMessage(signer, block.BaseFee())
+		sender := msg.From()
+		if _, err := idx.indexdb.AccountInfo(sender); err != nil {
+			accInfo := &model.AccountInfo{
+				Address: sender,
+				FirstTx: tx.Hash(),
+			}
+			enc, _ := rlp.EncodeToBytes(accInfo)
+			extdb.WriteAccountInfo(batch, sender, enc)
+		}
+		extdb.WriteAccountSentTx(batch, sender, tx.Hash(), tx.Nonce())
+		senderState := getAccState(sender)
+		senderState.SentTxCount += 1
+	}
+	idx.indexdb.UpdateExtState(block.Root(), accStates)
+	return batch.Write()
 }
 
 func (idx *ChainIndexer) indexingLoop() {
@@ -78,6 +109,9 @@ func (idx *ChainIndexer) indexingLoop() {
 	defer close(idx.termCh)
 	for block := range idx.blockCh {
 		log.Debug("Indexing block", "number", block.Number())
+		if err := idx.processBlock(block); err != nil {
+			log.Error("Indexer could not process block", "number", block.NumberU64())
+		}
 	}
 }
 
@@ -105,6 +139,7 @@ func (idx *ChainIndexer) Run() {
 		return
 	}
 	idx.lastBlock = lastBlock
+	idx.stateRoot = lastBlock.Root()
 	log.Info("Start indexing blockchain", "number", idx.lastBlock.Number(), "root", idx.lastBlock.Root())
 	go idx.indexingLoop()
 }
