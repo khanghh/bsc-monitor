@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
+	"github.com/ethereum/go-ethereum/cmd/gethext/model"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -18,15 +19,30 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-type ExtState interface {
-	MarshalRLP() []byte
-	UnmarshalRLP(data []byte) error
-}
-
 type IndexDB struct {
 	diskdb ethdb.Database
 	triedb *trie.Database // account trie database
 	mtx    sync.Mutex
+}
+
+func (db *IndexDB) AccountInfo(addr common.Address) (*model.AccountInfo, error) {
+	enc := extdb.ReadAccountInfo(db.diskdb, addr)
+	accInfo := new(model.AccountInfo)
+	if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
+		log.Error("Could not decode account info", "addr", addr, "err", err)
+		return nil, &NoAccountInfoError{addr}
+	}
+	return accInfo, nil
+}
+
+func (db *IndexDB) ContractInfo(addr common.Address) (*model.ContractInfo, error) {
+	enc := extdb.ReadAccountInfo(db.diskdb, addr)
+	contractInfo := new(model.ContractInfo)
+	if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
+		log.Error("Could not decode contract info", "addr", addr, "err", err)
+		return nil, &NoAccountInfoError{addr}
+	}
+	return contractInfo, nil
 }
 
 func (db *IndexDB) getAccountStateRLP(root common.Hash, addr common.Address) ([]byte, error) {
@@ -41,37 +57,17 @@ func (db *IndexDB) getAccountStateRLP(root common.Hash, addr common.Address) ([]
 	return enc, nil
 }
 
-func (db *IndexDB) AccountInfo(addr common.Address) (*AccountInfo, error) {
-	enc := extdb.ReadAccountInfo(db.diskdb, addr)
-	accInfo := new(AccountInfo)
-	if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
-		log.Error("Could not decode account info", "addr", addr, "err", err)
-		return nil, &NoAccountInfoError{addr}
-	}
-	return accInfo, nil
-}
-
-func (db *IndexDB) ContractInfo(addr common.Address) (*ContractInfo, error) {
-	enc := extdb.ReadAccountInfo(db.diskdb, addr)
-	contractInfo := new(ContractInfo)
-	if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
-		log.Error("Could not decode contract info", "addr", addr, "err", err)
-		return nil, &NoAccountInfoError{addr}
-	}
-	return contractInfo, nil
-}
-
-func (db *IndexDB) AccountExtState(root common.Hash, addr common.Address, val ExtState) error {
+func (db *IndexDB) AccountExtState(root common.Hash, addr common.Address, val interface{}) error {
 	enc, err := db.getAccountStateRLP(root, addr)
 	if err != nil {
 		return err
 	}
 	exthash := crypto.Keccak256Hash(addr.Bytes(), enc)
 	extData := extdb.ReadAccountExtState(db.diskdb, exthash)
-	return val.UnmarshalRLP(extData)
+	return rlp.DecodeBytes(extData, val)
 }
 
-func (db *IndexDB) UpdateExtState(root common.Hash, states map[common.Address]ExtState) error {
+func (db *IndexDB) UpdateExtState(root common.Hash, states map[common.Address]interface{}) error {
 	db.mtx.Lock()
 	defer db.mtx.Unlock()
 	batch := db.diskdb.NewBatch()
@@ -85,7 +81,8 @@ func (db *IndexDB) UpdateExtState(root common.Hash, states map[common.Address]Ex
 			return &NoAccountStateError{root, addr}
 		}
 		hash := crypto.Keccak256Hash(addr.Bytes(), enc)
-		extdb.WriteAccountExtState(batch, hash, state.MarshalRLP())
+		rlpState, _ := rlp.EncodeToBytes(state)
+		extdb.WriteAccountExtState(batch, hash, rlpState)
 	}
 	if err = batch.Write(); err != nil {
 		log.Error("Failed to batch write account state", "err", err)
