@@ -1,0 +1,129 @@
+package monitor
+
+import (
+	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
+)
+
+type stateObject struct {
+	indexdb *IndexDB
+	origin  common.Hash
+
+	accountDetails map[common.Address]*AccountDetail     // keep the previous dirtyAccounts
+	accountStates  map[common.Address]*AccountIndexState // keep the previous index states
+	dirtyChange    map[common.Address]*accountIndex
+	dirtyAccounts  map[common.Address]*AccountDetail
+}
+
+func (s *stateObject) DirtyAccounts() []common.Address {
+	accounts := make([]common.Address, 0, len(s.dirtyAccounts))
+	for account := range s.dirtyAccounts {
+		accounts = append(accounts, account)
+	}
+	return accounts
+}
+
+// GetAccountDetail retrieves account info and contract info of the given address
+func (s *stateObject) GetAccountDetail(addr common.Address) *AccountDetail {
+	if acc, exist := s.dirtyAccounts[addr]; exist {
+		return acc
+	}
+	if acc, exist := s.accountDetails[addr]; exist {
+		return acc
+	}
+	accInfo, err := s.indexdb.AccountInfo(addr)
+	if err != nil {
+		accInfo = &AccountInfo{}
+	}
+	contractInfo, _ := s.indexdb.ContractInfo(addr)
+	s.accountDetails[addr] = &AccountDetail{
+		Address:      addr,
+		AccountInfo:  accInfo,
+		ContractInfo: contractInfo,
+	}
+	return s.accountDetails[addr]
+}
+
+func (s *stateObject) SetAccountDetail(addr common.Address, accInfo *AccountInfo, contractInfo *ContractInfo) *AccountDetail {
+	s.dirtyAccounts[addr] = &AccountDetail{
+		Address:      addr,
+		AccountInfo:  accInfo,
+		ContractInfo: contractInfo,
+	}
+	return s.dirtyAccounts[addr]
+}
+
+func (s *stateObject) AccountIndex(addr common.Address) *accountIndex {
+	if accIndex, exist := s.dirtyChange[addr]; exist {
+		return accIndex
+	}
+	indexState, err := s.indexdb.AccountExtState(s.origin, addr)
+	if err != nil {
+		log.Error("Could not load index state", "addr", addr, "error", err)
+	}
+	s.dirtyChange[addr] = &accountIndex{
+		IndexState: indexState,
+		ChangeSet:  &AccountIndexData{},
+	}
+	return s.dirtyChange[addr]
+}
+
+func (s *stateObject) commitAccounts() error {
+	batch := s.indexdb.diskdb.NewBatch()
+	for addr, accDetail := range s.dirtyAccounts {
+		if accDetail.AccountInfo != nil {
+			enc, _ := rlp.EncodeToBytes(accDetail.AccountInfo)
+			extdb.WriteAccountInfo(batch, addr, enc)
+		}
+	}
+	return batch.Write()
+}
+
+func (s *stateObject) commitChanges(newRoot common.Hash) error {
+	batch := s.indexdb.diskdb.NewBatch()
+	for addr, accIndex := range s.dirtyChange {
+		changeSet := accIndex.ChangeSet
+		indexState := accIndex.IndexState
+		originState, _ := s.indexdb.AccountExtState(s.origin, addr)
+		for i, txHash := range changeSet.SentTxs {
+			txIndex := originState.SentTxCount + uint64(i)
+			extdb.WriteAccountSentTx(batch, addr, txHash, txIndex)
+		}
+		for i, txHash := range changeSet.InternalTxs {
+			txIndex := originState.InternalTxCount + uint64(i)
+			extdb.WriteAccountInternalTx(batch, addr, txHash, txIndex)
+		}
+		hash, err := s.indexdb.getIndexStateHash(newRoot, addr)
+		if err != nil {
+			log.Error("Could not calculate index state hash", "root", newRoot, "error", err)
+			return err
+		}
+		enc, _ := rlp.EncodeToBytes(indexState)
+		extdb.WriteAccountExtState(batch, hash, enc)
+	}
+	return batch.Write()
+}
+
+// Commit writes pending change sets and indexing states for new state root
+func (s *stateObject) Commit(newRoot common.Hash) error {
+	if err := s.commitAccounts(); err != nil {
+		return err
+	}
+	if err := s.commitChanges(newRoot); err != nil {
+		return err
+	}
+	return nil
+}
+
+func newStateObject(indexdb *IndexDB, origin common.Hash) *stateObject {
+	return &stateObject{
+		indexdb:        indexdb,
+		origin:         origin,
+		accountDetails: make(map[common.Address]*AccountDetail),
+		accountStates:  make(map[common.Address]*AccountIndexState),
+		dirtyChange:    make(map[common.Address]*accountIndex),
+		dirtyAccounts:  make(map[common.Address]*AccountDetail),
+	}
+}

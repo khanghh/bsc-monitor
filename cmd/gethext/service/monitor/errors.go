@@ -30,11 +30,11 @@ func (err *NoAccountStateError) Error() string {
 }
 
 type NoAccountInfoError struct {
-	Account common.Address
+	Address common.Address
 }
 
 func (err *NoAccountInfoError) Error() string {
-	return fmt.Sprintf("account info of %x not found", err.Account)
+	return fmt.Sprintf("account info of %x not found", err.Address)
 }
 
 type NoContractInfoError struct {
