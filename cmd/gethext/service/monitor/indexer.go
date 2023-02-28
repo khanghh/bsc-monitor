@@ -1,18 +1,18 @@
 package monitor
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
-	"github.com/ethereum/go-ethereum/cmd/gethext/model"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 type ChainIndexer struct {
@@ -20,9 +20,11 @@ type ChainIndexer struct {
 	indexdb    *IndexDB
 	blockchain *core.BlockChain
 
-	lastBlock *types.Block
-	blockCh   chan *types.Block
-	stateRoot common.Hash
+	lastBlock    *types.Block
+	blockCh      chan *types.Block
+	currentRoot  common.Hash
+	pendingState *stateObject
+	genState     bool // generate statedb or use snapshot
 
 	status  uint32
 	pauseCh chan bool
@@ -38,42 +40,79 @@ func (idx *ChainIndexer) Status() task.TaskStatus {
 	return task.TaskStatus(idx.status)
 }
 
-func (idx *ChainIndexer) GetAccount(addr common.Address) (*model.Account, error) {
-	return idx.GetAccountAt(idx.blockchain.CurrentBlock().Root(), addr)
+func (idx *ChainIndexer) newTrieDiffNodeIterator(oldRoot, newRoot common.Hash) (*trie.Iterator, error) {
+	oldTrie, err := idx.indexdb.trieCache.OpenTrie(oldRoot)
+	if err != nil {
+		return nil, err
+	}
+	newTrie, err := idx.indexdb.trieCache.OpenTrie(newRoot)
+	if err != nil {
+		return nil, err
+	}
+	diff, _ := trie.NewDifferenceIterator(oldTrie.NodeIterator([]byte{}), newTrie.NodeIterator([]byte{}))
+	iter := trie.NewIterator(diff)
+	return iter, nil
 }
 
-// processBlock generate statedb at the given block, re-execute every transaction and extract neccessary info into indexdb
+func (idx *ChainIndexer) commitChange(stateObj *stateObject, root common.Hash) (*stateObject, error) {
+	if err := stateObj.Commit(root); err != nil {
+		return nil, err
+	}
+	newState := newStateObject(idx.indexdb, root)
+	newState.accountDetails = stateObj.dirtyAccounts
+	for addr, oldChange := range stateObj.dirtyChange {
+		newState.accountStates[addr] = oldChange.IndexState
+	}
+	return newState, nil
+}
+
+// processBlock re-executes every transactions in block and extracts neccessary info into indexdb
 func (idx *ChainIndexer) processBlock(block *types.Block) error {
-	accStates := make(map[common.Address]interface{})
-	getAccState := func(addr common.Address) *AccountIndexState {
-		accState, exist := accStates[addr]
-		if !exist {
-			accState := new(AccountIndexState)
-			idx.indexdb.AccountExtState(idx.stateRoot, addr, accState)
-			accStates[addr] = accState
-		}
-		return accState.(*AccountIndexState)
+	if block.Root() == idx.currentRoot {
+		log.Warn("Ignore block, no need indexing", "block", block.NumberU64(), "root", block.Root())
+		return nil
 	}
-	batch := idx.diskdb.NewBatch()
-	signer := types.MakeSigner(idx.blockchain.Config(), block.Number())
+	stateObj := idx.pendingState
+	if stateObj == nil {
+		stateObj = newStateObject(idx.indexdb, idx.currentRoot)
+	}
+	var sender, receiver *AccountDetail
 	txs := block.Transactions()
-	for _, tx := range txs {
+	receipts := idx.blockchain.GetReceiptsByHash(block.Hash())
+	signer := types.MakeSigner(idx.blockchain.Config(), block.Number())
+	for txIndex, tx := range txs {
 		msg, _ := tx.AsMessage(signer, block.BaseFee())
-		sender := msg.From()
-		if _, err := idx.indexdb.AccountInfo(sender); err != nil {
-			accInfo := &model.AccountInfo{
-				Address: sender,
-				FirstTx: tx.Hash(),
-			}
-			enc, _ := rlp.EncodeToBytes(accInfo)
-			extdb.WriteAccountInfo(batch, sender, enc)
+		if tx.Nonce() == 0 {
+			sender = stateObj.SetAccountDetail(msg.From(), &AccountInfo{FirstTx: tx.Hash()}, nil)
+			log.Warn(fmt.Sprintf("New account activated: %s", sender.Address), "tx", tx.Hash())
 		}
-		extdb.WriteAccountSentTx(batch, sender, tx.Hash(), tx.Nonce())
-		senderState := getAccState(sender)
-		senderState.SentTxCount += 1
+		stateObj.AccountIndex(msg.From()).AddSentTx(tx.Hash())
+		if tx.To() == nil {
+			receipt := receipts[txIndex]
+			if receipt.ContractAddress != nilAddress {
+				receiver = stateObj.SetAccountDetail(
+					receipt.ContractAddress,
+					&AccountInfo{FirstTx: tx.Hash()},
+					&ContractInfo{Creator: msg.From()},
+				)
+				stateObj.AccountIndex(receiver.Address).AddInternalTx(tx.Hash())
+				log.Warn(fmt.Sprintf("New contract created: %s", receiver.Address), "tx", tx.Hash())
+			}
+		}
 	}
-	idx.indexdb.UpdateExtState(block.Root(), accStates)
-	return batch.Write()
+	// TODO: iterate over modified nodes of new trie to index full contracts
+	if _, err := idx.indexdb.trieCache.OpenTrie(block.Root()); err != nil {
+		log.Warn("Missing trie node, continue indexing next state", "missing", block.Root())
+		idx.pendingState = stateObj
+	} else {
+		newState, err := idx.commitChange(stateObj, block.Root())
+		if err != nil {
+			log.Error("Indexer commits state failed", "root", block.Root(), "error", err)
+			return err
+		}
+		idx.pendingState = newState
+	}
+	return nil
 }
 
 func (idx *ChainIndexer) indexingLoop() {
@@ -111,13 +150,9 @@ func (idx *ChainIndexer) indexingLoop() {
 		log.Debug("Indexing block", "number", block.Number())
 		if err := idx.processBlock(block); err != nil {
 			log.Error("Indexer could not process block", "number", block.NumberU64())
+			return
 		}
 	}
-}
-
-// GetAccountAt returns account and its state at specific state root
-func (s *ChainIndexer) GetAccountAt(root common.Hash, addr common.Address) (*model.Account, error) {
-	return nil, nil
 }
 
 func (idx *ChainIndexer) Run() {
@@ -135,11 +170,11 @@ func (idx *ChainIndexer) Run() {
 	}
 
 	// Try to update the status from pending or paused to preparing
-	if atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
+	if !atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
 		return
 	}
 	idx.lastBlock = lastBlock
-	idx.stateRoot = lastBlock.Root()
+	idx.currentRoot = lastBlock.Root()
 	log.Info("Start indexing blockchain", "number", idx.lastBlock.Number(), "root", idx.lastBlock.Root())
 	go idx.indexingLoop()
 }
@@ -171,10 +206,11 @@ func (idx *ChainIndexer) Stop() {
 }
 
 func NewChainIndexer(diskdb ethdb.Database, bc *core.BlockChain) (*ChainIndexer, error) {
-	indexdb := NewIndexDB(diskdb, bc.StateCache().TrieDB())
+	indexdb := NewIndexDB(diskdb, bc.StateCache())
 	return &ChainIndexer{
 		diskdb:     diskdb,
 		indexdb:    indexdb,
 		blockchain: bc,
+		blockCh:    make(chan *types.Block),
 	}, nil
 }
