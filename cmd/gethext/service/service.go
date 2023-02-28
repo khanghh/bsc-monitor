@@ -59,6 +59,7 @@ func (s *MonitorService) Start() error {
 }
 
 func (s *MonitorService) Stop() {
+	log.Info("Stopping monitor service...")
 	s.quitLock.Lock()
 	select {
 	case <-s.quitCh:
