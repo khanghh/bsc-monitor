@@ -58,10 +58,11 @@ type Task interface {
 }
 
 type TaskManager struct {
-	tasks  map[string]Task
-	wg     sync.WaitGroup
-	mtx    sync.Mutex
-	quitCh chan struct{}
+	tasks    map[string]Task
+	wg       sync.WaitGroup
+	mtx      sync.Mutex
+	quitLock sync.Mutex
+	quitCh   chan struct{}
 }
 
 func (tm *TaskManager) RunTask(name string, task Task) error {
@@ -114,8 +115,8 @@ func (tm *TaskManager) GetTask(name string) (Task, error) {
 }
 
 func (tm *TaskManager) Stop() {
-	tm.mtx.Lock()
-	defer tm.mtx.Unlock()
+	tm.quitLock.Lock()
+	defer tm.quitLock.Unlock()
 	close(tm.quitCh)
 	for taskName := range tm.tasks {
 		tm.KillTask(taskName)

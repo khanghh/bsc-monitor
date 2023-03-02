@@ -11,10 +11,10 @@ type stateObject struct {
 	indexdb *IndexDB
 	origin  common.Hash
 
-	accountDetails map[common.Address]*AccountDetail     // keep the previous dirtyAccounts
-	accountStates  map[common.Address]*AccountIndexState // keep the previous index states
-	dirtyChange    map[common.Address]*accountIndex
-	dirtyAccounts  map[common.Address]*AccountDetail
+	accounts      map[common.Address]*AccountDetail     // commited account infos
+	accStates     map[common.Address]*AccountIndexState // commited index states
+	dirtyChange   map[common.Address]*accountIndex
+	dirtyAccounts map[common.Address]*AccountDetail
 }
 
 func (s *stateObject) DirtyAccounts() []common.Address {
@@ -30,7 +30,7 @@ func (s *stateObject) GetAccountDetail(addr common.Address) *AccountDetail {
 	if acc, exist := s.dirtyAccounts[addr]; exist {
 		return acc
 	}
-	if acc, exist := s.accountDetails[addr]; exist {
+	if acc, exist := s.accounts[addr]; exist {
 		return acc
 	}
 	accInfo, err := s.indexdb.AccountInfo(addr)
@@ -38,12 +38,12 @@ func (s *stateObject) GetAccountDetail(addr common.Address) *AccountDetail {
 		accInfo = &AccountInfo{}
 	}
 	contractInfo, _ := s.indexdb.ContractInfo(addr)
-	s.accountDetails[addr] = &AccountDetail{
+	s.accounts[addr] = &AccountDetail{
 		Address:      addr,
 		AccountInfo:  accInfo,
 		ContractInfo: contractInfo,
 	}
-	return s.accountDetails[addr]
+	return s.accounts[addr]
 }
 
 func (s *stateObject) SetAccountDetail(addr common.Address, accInfo *AccountInfo, contractInfo *ContractInfo) *AccountDetail {
@@ -61,13 +61,24 @@ func (s *stateObject) AccountIndex(addr common.Address) *accountIndex {
 	}
 	indexState, err := s.indexdb.AccountExtState(s.origin, addr)
 	if err != nil {
-		log.Error("Could not load index state", "addr", addr, "error", err)
+		indexState = new(AccountIndexState)
 	}
 	s.dirtyChange[addr] = &accountIndex{
 		IndexState: indexState,
 		ChangeSet:  &AccountIndexData{},
 	}
 	return s.dirtyChange[addr]
+}
+
+func (s *stateObject) getOriginState(addr common.Address) *AccountIndexState {
+	if indexState, exist := s.accStates[addr]; exist {
+		return indexState
+	}
+	indexState, err := s.indexdb.AccountExtState(s.origin, addr)
+	if err != nil {
+		indexState = new(AccountIndexState)
+	}
+	return indexState
 }
 
 func (s *stateObject) commitAccounts() error {
@@ -86,7 +97,7 @@ func (s *stateObject) commitChanges(newRoot common.Hash) error {
 	for addr, accIndex := range s.dirtyChange {
 		changeSet := accIndex.ChangeSet
 		indexState := accIndex.IndexState
-		originState, _ := s.indexdb.AccountExtState(s.origin, addr)
+		originState := s.getOriginState(addr)
 		for i, txHash := range changeSet.SentTxs {
 			txIndex := originState.SentTxCount + uint64(i)
 			extdb.WriteAccountSentTx(batch, addr, txHash, txIndex)
@@ -119,11 +130,11 @@ func (s *stateObject) Commit(newRoot common.Hash) error {
 
 func newStateObject(indexdb *IndexDB, origin common.Hash) *stateObject {
 	return &stateObject{
-		indexdb:        indexdb,
-		origin:         origin,
-		accountDetails: make(map[common.Address]*AccountDetail),
-		accountStates:  make(map[common.Address]*AccountIndexState),
-		dirtyChange:    make(map[common.Address]*accountIndex),
-		dirtyAccounts:  make(map[common.Address]*AccountDetail),
+		indexdb:       indexdb,
+		origin:        origin,
+		accounts:      make(map[common.Address]*AccountDetail),
+		accStates:     make(map[common.Address]*AccountIndexState),
+		dirtyChange:   make(map[common.Address]*accountIndex),
+		dirtyAccounts: make(map[common.Address]*AccountDetail),
 	}
 }

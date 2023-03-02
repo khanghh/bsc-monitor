@@ -13,15 +13,15 @@ import (
 )
 
 func ReadStateRoot(db ethdb.KeyValueReader) common.Hash {
-	data, _ := db.Get(StateRootKey)
+	data, _ := db.Get(LastIndexStateKey)
 	if len(data) != common.HashLength {
 		return nilHash
 	}
 	return common.BytesToHash(data)
 }
 
-func WriteStateRoot(db ethdb.KeyValueWriter, root common.Hash) {
-	if err := db.Put(StateRootKey, root[:]); err != nil {
+func WriteIndexStateRoot(db ethdb.KeyValueWriter, root common.Hash) {
+	if err := db.Put(LastIndexStateKey, root[:]); err != nil {
 		log.Crit("Failed to store snapshot root", "err", err)
 	}
 }
