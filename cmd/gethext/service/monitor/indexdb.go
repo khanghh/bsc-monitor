@@ -46,7 +46,7 @@ func (db *IndexDB) AccountInfo(addr common.Address) (*AccountInfo, error) {
 	}
 	accInfo := new(AccountInfo)
 	if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
-		return nil, &NoAccountInfoError{addr}
+		return nil, ErrNoAccountInfo
 	}
 	return accInfo, nil
 }
@@ -62,7 +62,7 @@ func (db *IndexDB) ContractInfo(addr common.Address) (*ContractInfo, error) {
 	}
 	contractInfo := new(ContractInfo)
 	if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
-		return nil, &NoContractInfoError{addr}
+		return nil, ErrNoContractInfo
 	}
 	return contractInfo, nil
 }
@@ -70,11 +70,11 @@ func (db *IndexDB) ContractInfo(addr common.Address) (*ContractInfo, error) {
 func (db *IndexDB) getAccountStateRLP(root common.Hash, addr common.Address) ([]byte, error) {
 	tr, err := db.trieCache.OpenTrie(root)
 	if err != nil {
-		return nil, &MissingTrieError{root}
+		return nil, ErrMissingTrieNode
 	}
 	enc, err := tr.TryGet(addr.Bytes())
 	if err != nil && len(enc) > 0 {
-		return nil, &NoAccountStateError{root, addr}
+		return nil, ErrNoAccountState
 	}
 	return enc, nil
 }
@@ -102,7 +102,7 @@ func (db *IndexDB) AccountExtState(root common.Hash, addr common.Address) (*Acco
 	}
 	indexState := new(AccountIndexState)
 	if err := rlp.DecodeBytes(stateEnc, indexState); err != nil {
-		return nil, &NoContractInfoError{addr}
+		return nil, ErrNoAccountIndexState
 	}
 	return indexState, nil
 }

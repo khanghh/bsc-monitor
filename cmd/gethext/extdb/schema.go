@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	StateRootKey      = []byte("StateRoot")      // SnapshotRootKey tracks the hash of the last snapshot.
+	LastIndexStateKey = []byte("LastIndexState") // LastIndexState tracks the hash of the last indexed state.
 	LastIndexBlockKey = []byte("LastIndexBlock") // LastIndexBlock tracks the hash of the last indexed block.
 	TotalAccountsKey  = []byte("TotalAccounts")
 	TotalContractsKey = []byte("TotalContracts")

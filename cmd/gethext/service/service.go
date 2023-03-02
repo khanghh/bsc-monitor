@@ -64,10 +64,14 @@ func (s *MonitorService) Stop() {
 	select {
 	case <-s.quitCh:
 	default:
-		s.taskManager.Stop()
 		s.pluginManager.Stop()
+		log.Info("PluginManager stopped.")
 		s.chainMonitor.Stop()
+		log.Info("ChainMonitor stopped.")
 		s.chainIndexer.Stop()
+		log.Info("ChainIndexer stopped.")
+		s.taskManager.Stop()
+		log.Info("TaskManager stopped.")
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
