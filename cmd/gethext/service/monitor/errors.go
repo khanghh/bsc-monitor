@@ -7,40 +7,13 @@
 package monitor
 
 import (
-	"fmt"
-
-	"github.com/ethereum/go-ethereum/common"
+	"errors"
 )
 
-type MissingTrieError struct {
-	Root common.Hash // state root of the missing node
-}
-
-func (err *MissingTrieError) Error() string {
-	return fmt.Sprintf("missing trie node %x", err.Root)
-}
-
-type NoAccountStateError struct {
-	Root    common.Hash // state root of the missing node
-	Address common.Address
-}
-
-func (err *NoAccountStateError) Error() string {
-	return fmt.Sprintf("no state found for account %x at root %x", err.Address, err.Root)
-}
-
-type NoAccountInfoError struct {
-	Address common.Address
-}
-
-func (err *NoAccountInfoError) Error() string {
-	return fmt.Sprintf("account info of %x not found", err.Address)
-}
-
-type NoContractInfoError struct {
-	Address common.Address
-}
-
-func (err *NoContractInfoError) Error() string {
-	return fmt.Sprintf("contract info of %x not found", err.Address)
-}
+var (
+	ErrMissingTrieNode     = errors.New("missing trie node")
+	ErrNoAccountIndexState = errors.New("account index state not found")
+	ErrNoAccountState      = errors.New("account state not found")
+	ErrNoAccountInfo       = errors.New("account info not found")
+	ErrNoContractInfo      = errors.New("contract info not found")
+)
