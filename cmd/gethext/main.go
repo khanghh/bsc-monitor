@@ -333,7 +333,7 @@ func prepare(ctx *cli.Context) {
 	go metrics.CollectProcessMetrics(3 * time.Second)
 }
 
-func startMonitorService(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethereum) *service.MonitorService {
+func newMonitor(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethereum) *service.MonitorService {
 	instance, err := service.NewMonitorService(&service.MonitorServiceOptions{
 		MonitorConfig: &cfg.Monitor,
 		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
@@ -345,6 +345,12 @@ func startMonitorService(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethere
 		utils.Fatalf("Could not start chain monitor service")
 	}
 	return instance
+}
+func makeMonitorServiceConfig(ctx *cli.Context, cfg *gethConfig) *service.MonitorServiceOptions {
+	return &service.MonitorServiceOptions{
+		MonitorConfig: &cfg.Monitor,
+		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
+	}
 }
 
 // geth is the main entry point into the system if no special subcommand is ran.
@@ -360,9 +366,16 @@ func geth(ctx *cli.Context) error {
 	stack, ethereum := makeFullNode(ctx, cfg)
 	defer stack.Close()
 
+	serviceCfg := &service.MonitorServiceOptions{
+		MonitorConfig: &cfg.Monitor,
+		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
+	}
+	instance, err := service.NewMonitorService(serviceCfg, stack, ethereum)
+	if err != nil {
+		utils.Fatalf("Could not initialize chain monitor service")
+	}
+	stack.RegisterLifecycle(instance)
 	startNode(ctx, stack, ethereum.APIBackend, false)
-	monitorService := startMonitorService(cfg, stack, ethereum)
-	defer monitorService.Stop()
 	stack.Wait()
 	return nil
 }
