@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -58,7 +59,7 @@ func (s *MonitorService) Start() error {
 	return nil
 }
 
-func (s *MonitorService) Stop() {
+func (s *MonitorService) Stop() error {
 	log.Info("Stopping monitor service...")
 	s.quitLock.Lock()
 	select {
@@ -76,6 +77,17 @@ func (s *MonitorService) Stop() {
 	}
 	s.quitLock.Unlock()
 	log.Info("Chain monitor service stopped.")
+	return nil
+}
+
+func (s *MonitorService) APIs() []rpc.API {
+	return []rpc.API{
+		{
+			Namespace: "indexer",
+			Version:   "1.0",
+			Public:    true,
+		},
+	}
 }
 
 func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Ethereum) (*MonitorService, error) {
