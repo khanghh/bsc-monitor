@@ -120,8 +120,10 @@ func (idx *ChainIndexer) processBlock(block *types.Block) error {
 }
 
 func (idx *ChainIndexer) cleanUpAndStop() {
-	extdb.WriteLastIndexBlock(idx.diskdb, idx.commitBlock.Hash())
-	extdb.WriteIndexStateRoot(idx.diskdb, idx.pendingState.origin)
+	if idx.commitBlock != nil && idx.pendingState != nil {
+		extdb.WriteLastIndexBlock(idx.diskdb, idx.commitBlock.Hash())
+		extdb.WriteIndexStateRoot(idx.diskdb, idx.pendingState.origin)
+	}
 	close(idx.termCh)
 	atomic.SwapUint32(&idx.status, uint32(task.StatusStopped))
 }
