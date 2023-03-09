@@ -10,6 +10,7 @@ import (
 	"context"
 	"math/big"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -125,6 +126,27 @@ type sharedCtx struct {
 	Monitor MonitorBackend
 	Indexer ChainIndexer
 	TaskMgr TaskManager
+	Storage map[string]interface{}
+	mtx     sync.RWMutex
+}
+
+func (ctx *sharedCtx) Set(key string, val interface{}) {
+	ctx.mtx.Lock()
+	defer ctx.mtx.Unlock()
+	if ctx.Storage == nil {
+		ctx.Storage = make(map[string]interface{})
+	}
+	ctx.Storage[key] = val
+}
+
+func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
+	ctx.mtx.RLock()
+	defer ctx.mtx.RUnlock()
+	if ctx.Storage == nil {
+		return nil, false
+	}
+	val, ok := ctx.Storage[key]
+	return val, ok
 }
 
 // PluginCtx provides access to internal services for a plugin, each plugin
