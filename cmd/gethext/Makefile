@@ -17,14 +17,14 @@ gethext: ## Build gethext
 	go build -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o=$(BUILD_DIR)/$@ $(CURDIR)/cmd/$@
 	@echo "Done building."
 
-demo: ## Build demo plugin
-	@echo "Building target: $@" 
+plugins/%: ## Build demo plugin
+	@echo "Building target: $*" 
 ifeq ($(shell go env GOOS), darwin)
-	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$@.dylib)
+	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$*.dylib)
 else
-	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$@.so)
+	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$*.so)
 endif
-	go build -buildmode=plugin -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$@
+	go build -buildmode=plugin -ldflags="$(LDFLAGS)" -tags="$(BUILD_TAGS)" -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$*
 	@echo "Done building."
 
 clean: ## Clean build directory

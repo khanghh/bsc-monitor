@@ -65,11 +65,8 @@ require (
 	github.com/syndtr/goleveldb v1.0.1
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/iavl v0.12.0
-	github.com/tendermint/tendermint v0.31.15
-	github.com/tidwall/wal v1.1.7
+	github.com/tendermint/tendermint v0.31.12
 	github.com/tyler-smith/go-bip39 v1.1.0
-	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
-	github.com/willf/bitset v1.1.3
 	golang.org/x/crypto v0.5.0
 	golang.org/x/sync v0.1.0
 	golang.org/x/sys v0.6.0
@@ -78,6 +75,12 @@ require (
 	golang.org/x/tools v0.6.0
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 	gopkg.in/urfave/cli.v1 v1.20.0
+)
+
+require (
+	github.com/tidwall/wal v1.1.7
+	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
+	github.com/willf/bitset v1.1.3
 )
 
 require (
@@ -238,7 +241,7 @@ require (
 	github.com/wealdtech/go-eth2-util v1.6.3 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	go.etcd.io/bbolt v1.3.7 // indirect
+	go.etcd.io/bbolt v1.3.6 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
