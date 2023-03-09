@@ -3,6 +3,7 @@ package monitor
 import (
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -81,30 +82,28 @@ func (s *stateObject) getOriginState(addr common.Address) *AccountIndexState {
 	return indexState
 }
 
-func (s *stateObject) commitAccounts() error {
-	batch := s.indexdb.diskdb.NewBatch()
+func (s *stateObject) commitAccounts(db ethdb.KeyValueWriter) error {
 	for addr, accDetail := range s.dirtyAccounts {
 		if accDetail.AccountInfo != nil {
 			enc, _ := rlp.EncodeToBytes(accDetail.AccountInfo)
-			extdb.WriteAccountInfo(batch, addr, enc)
+			extdb.WriteAccountInfo(db, addr, enc)
 		}
 	}
-	return batch.Write()
+	return nil
 }
 
-func (s *stateObject) commitChanges(newRoot common.Hash) error {
-	batch := s.indexdb.diskdb.NewBatch()
+func (s *stateObject) commitChanges(db ethdb.KeyValueWriter, newRoot common.Hash) error {
 	for addr, accIndex := range s.dirtyChange {
 		changeSet := accIndex.ChangeSet
 		indexState := accIndex.IndexState
 		originState := s.getOriginState(addr)
 		for i, txHash := range changeSet.SentTxs {
 			txIndex := originState.SentTxCount + uint64(i)
-			extdb.WriteAccountSentTx(batch, addr, txHash, txIndex)
+			extdb.WriteAccountSentTx(db, addr, txHash, txIndex)
 		}
 		for i, txHash := range changeSet.InternalTxs {
 			txIndex := originState.InternalTxCount + uint64(i)
-			extdb.WriteAccountInternalTx(batch, addr, txHash, txIndex)
+			extdb.WriteAccountInternalTx(db, addr, txHash, txIndex)
 		}
 		hash, err := s.indexdb.getIndexStateHash(newRoot, addr)
 		if err != nil {
@@ -112,20 +111,19 @@ func (s *stateObject) commitChanges(newRoot common.Hash) error {
 			return err
 		}
 		enc, _ := rlp.EncodeToBytes(indexState)
-		extdb.WriteAccountExtState(batch, hash, enc)
+		extdb.WriteAccountExtState(db, hash, enc)
 	}
-	return batch.Write()
+	return nil
 }
 
 // Commit writes pending change sets and indexing states for new state root
 func (s *stateObject) Commit(newRoot common.Hash) error {
-	if err := s.commitAccounts(); err != nil {
+	batch := s.indexdb.diskdb.NewBatch()
+	s.commitAccounts(batch)
+	if err := s.commitChanges(batch, newRoot); err != nil {
 		return err
 	}
-	if err := s.commitChanges(newRoot); err != nil {
-		return err
-	}
-	return nil
+	return batch.Write()
 }
 
 func newStateObject(indexdb *IndexDB, origin common.Hash) *stateObject {
