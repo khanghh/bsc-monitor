@@ -106,13 +106,15 @@ func (idx *ChainIndexer) processBlock(block *types.Block) error {
 		log.Debug("Missing trie node, continue indexing on next state", "missing", block.Root())
 		idx.pendingState = stateObj
 	} else {
+		start := time.Now()
 		log.Info("Commiting index data", "number", block.NumberU64(), "root", block.Root())
 		newState, err := idx.commitChange(stateObj, block)
 		if err != nil {
 			log.Error("Could not commit indexing state", "root", block.Root(), "error", err)
 			return err
 		}
-		log.Info("Persisted indexing data", "accounts", len(stateObj.DirtyAccounts()), "number", block.NumberU64(), "root", block.Root())
+		elapsed := time.Since(start)
+		log.Info("Persisted indexing data", "accounts", len(stateObj.DirtyAccounts()), "number", block.NumberU64(), "root", block.Root(), "elapsed", elapsed, "dirty")
 		idx.commitBlock = block
 		idx.pendingState = newState
 	}
