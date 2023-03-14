@@ -7,7 +7,6 @@
 package monitor
 
 import (
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
@@ -32,7 +31,6 @@ type IndexDB struct {
 	trieCache  state.Database
 	infoCache  *lru.Cache
 	stateCache *lru.Cache // account indexing state cache
-	mtx        sync.Mutex
 }
 
 func (db *IndexDB) AccountInfo(addr common.Address) (*AccountInfo, error) {
