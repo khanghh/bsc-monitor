@@ -679,6 +679,8 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 
 		extraSuffix := len(header.Extra) - extraSeal
+		// fmt.Println("validatorsBytes:", hexutil.Bytes(validatorsBytes))
+		// fmt.Println("header.Extra:", hexutil.Bytes(header.Extra[extraVanity:extraSuffix]))
 		if !bytes.Equal(header.Extra[extraVanity:extraSuffix], validatorsBytes) {
 			return errMismatchingEpochValidators
 		}
