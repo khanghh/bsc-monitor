@@ -74,9 +74,6 @@ func (idx *ChainIndexer) processBlock(block *types.Block) error {
 		return nil
 	}
 	stateObj := idx.pendingState
-	if stateObj == nil {
-		stateObj = newStateObject(idx.indexdb, idx.lastBlock.Root())
-	}
 	var sender, receiver *AccountDetail
 	txs := block.Transactions()
 	receipts := idx.blockchain.GetReceiptsByHash(block.Hash())
@@ -104,8 +101,7 @@ func (idx *ChainIndexer) processBlock(block *types.Block) error {
 	// TODO: iterate over modified nodes of new trie to index full contracts
 	if _, err := idx.indexdb.trieCache.OpenTrie(block.Root()); err != nil {
 		log.Debug("Missing trie node, continue indexing on next state", "missing", block.Root())
-		idx.pendingState = stateObj
-	} else {
+	} else if len(idx.pendingState.DirtyAccounts()) > 0 {
 		start := time.Now()
 		log.Info("Commiting index data", "number", block.NumberU64(), "root", block.Root())
 		newState, err := idx.commitChange(stateObj, block)
@@ -198,6 +194,7 @@ func (idx *ChainIndexer) Run() {
 		return
 	}
 	idx.lastBlock = lastBlock
+	idx.pendingState = newStateObject(idx.indexdb, idx.lastBlock.Root())
 	log.Info("Start indexing blockchain", "number", idx.lastBlock.Number(), "root", idx.lastBlock.Root())
 	go idx.indexingLoop()
 }
