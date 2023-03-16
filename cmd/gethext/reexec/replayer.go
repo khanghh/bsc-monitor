@@ -1,3 +1,9 @@
+//
+// Created on 2023/3/13 by khanghh
+// Project: github.com/verichains/chain-monitor
+// Copyright (c) 2023 Verichains Lab
+//
+
 package reexec
 
 import (
@@ -18,22 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-type CallCtx struct {
-	GasLimit  uint64
-	GasRemain uint64
-	CallStack []CallFrame
-	From      common.Address
-	To        common.Address
-	Method    [4]byte
-}
-
-type ReExecHook interface {
-	OnTxStart(tx *types.Transaction, gasLimit uint64)
-	OnTxEnd(tx *types.Transaction, resetGas uint64)
-	OnCallEnter(ctx *CallCtx)
-	OnCallExit(ctx *CallCtx)
-}
-
 type ChainReplayer struct {
 	db        state.Database
 	bc        *core.BlockChain
@@ -42,6 +32,15 @@ type ChainReplayer struct {
 
 func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
 	re.maxReExec = maxReExec
+}
+
+// cacheSystemContracts cache account trie and storage trie of system contracts
+func (re *ChainReplayer) cacheSystemContracts(root common.Hash, statedb *state.StateDB) {
+	tr, _ := statedb.Trie()
+	contractAddr := common.HexToAddress(systemcontracts.ValidatorContract)
+	str := statedb.StorageTrie(contractAddr)
+	re.bc.StateCache().CacheAccount(root, tr)
+	re.bc.StateCache().CacheStorage(crypto.Keccak256Hash(contractAddr[:]), str.Hash(), str)
 }
 
 // StateAtBlock returns statedb after all transactions in block was executed
@@ -93,13 +92,9 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 			return nil, fmt.Errorf("block #%d not found", next)
 		}
 		// Replayer use its own state.Database to cache tries and isolated with the live one. This cause the parlia engine
-		// failed to load state of the system contracts, we need to cache their generated states into the live database
+		// failed to load state of the system contracts at epoch block, we need to cache their generated states into the live database
 		if current.NumberU64()%200 == 0 {
-			tr, _ := statedb.Trie()
-			contractAddr := common.HexToAddress(systemcontracts.ValidatorContract)
-			str := statedb.StorageTrie(contractAddr)
-			re.bc.StateCache().CacheAccount(parent, tr)
-			re.bc.StateCache().CacheStorage(crypto.Keccak256Hash(contractAddr[:]), str.Hash(), str)
+			re.cacheSystemContracts(parent, statedb)
 		}
 		statedb, _, _, _, err = re.bc.Processor().Process(current, statedb, vm.Config{})
 		if err != nil {
@@ -187,6 +182,9 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 		if err != nil {
 			return nil, fmt.Errorf("missing base state: %v", err)
 		}
+	}
+	if block.NumberU64()%200 == 0 {
+		re.cacheSystemContracts(block.Root(), base)
 	}
 	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{})
 	if err != nil {
