@@ -43,7 +43,7 @@ type MonitorService struct {
 }
 
 func (s *MonitorService) Start() error {
-	log.Info("Starting chain monitor service.")
+	log.Info("Starting chain monitor service")
 	if err := s.pluginManager.LoadPlugins(); err != nil {
 		log.Error("Could not load plugins", "error", err)
 		return err
@@ -66,17 +66,17 @@ func (s *MonitorService) Stop() error {
 	case <-s.quitCh:
 	default:
 		s.pluginManager.Stop()
-		log.Info("PluginManager stopped.")
+		log.Info("PluginManager stopped")
 		s.chainMonitor.Stop()
-		log.Info("ChainMonitor stopped.")
+		log.Info("ChainMonitor stopped")
 		s.chainIndexer.Stop()
-		log.Info("ChainIndexer stopped.")
+		log.Info("ChainIndexer stopped")
 		s.taskManager.Stop()
-		log.Info("TaskManager stopped.")
+		log.Info("TaskManager stopped")
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
-	log.Info("Chain monitor service stopped.")
+	log.Info("Chain monitor service stopped")
 	return nil
 }
 
