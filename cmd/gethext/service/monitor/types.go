@@ -21,36 +21,35 @@ type AccountIndexData struct {
 	Holders     []common.Address
 }
 
+func (s *AccountIndexData) AddSentTx(tx common.Hash) {
+	s.SentTxs = append(s.SentTxs, tx)
+}
+
+func (s *AccountIndexData) AddInternalTx(tx common.Hash) {
+	s.InternalTxs = append(s.InternalTxs, tx)
+}
+
+func (s *AccountIndexData) AddTokenTx(tx common.Hash) {
+	s.TokenTxs = append(s.TokenTxs, tx)
+}
+
+func (s *AccountIndexData) AddHolder(addr common.Address) {
+	s.Holders = append(s.Holders, addr)
+}
+
+// AccountIndexState is extra data for state trie (trie leaf is `types.StateAccount`)
 type AccountIndexState struct {
+	LastSentTxRef     []byte
+	LastInternalTxRef []byte
+	LastTokenTxRef    []byte
+	LastHolderRef     []byte
+}
+
+type AccountStats struct {
 	SentTxCount     uint64
 	InternalTxCount uint64
 	TokenTxCount    uint64
 	HolderCount     uint64
-}
-
-type accountIndex struct {
-	IndexState *AccountIndexState
-	ChangeSet  *AccountIndexData
-}
-
-func (c *accountIndex) AddSentTx(tx common.Hash) {
-	c.ChangeSet.SentTxs = append(c.ChangeSet.SentTxs, tx)
-	c.IndexState.SentTxCount += 1
-}
-
-func (c *accountIndex) AddInternalTx(tx common.Hash) {
-	c.ChangeSet.InternalTxs = append(c.ChangeSet.InternalTxs, tx)
-	c.IndexState.InternalTxCount += 1
-}
-
-func (c *accountIndex) AddTokenTx(tx common.Hash) {
-	c.ChangeSet.TokenTxs = append(c.ChangeSet.TokenTxs, tx)
-	c.IndexState.TokenTxCount += 1
-}
-
-func (c *accountIndex) AddHolder(addr common.Address) {
-	c.ChangeSet.Holders = append(c.ChangeSet.Holders, addr)
-	c.IndexState.HolderCount += 1
 }
 
 // AccountInfo holds basic information of an account
@@ -60,16 +59,20 @@ type AccountInfo struct {
 	FirstTx common.Hash
 }
 
-// ContractInfo is additional data for an account, holds neccessary information about a contract
+// ContractInfo is additional data for account if it's a contract
 type ContractInfo struct {
-	Type    []string
-	ABI     []byte
-	Creator common.Address
-	Website string
+	Interfaces []string
+	Creator    common.Address
 }
 
 type AccountDetail struct {
 	Address common.Address
 	*AccountInfo
 	*ContractInfo
+}
+
+func isEmptyAccountInfo(acc *AccountInfo) bool {
+	return acc.Name == "" &&
+		len(acc.Tags) == 0 &&
+		acc.FirstTx == nilHash
 }
