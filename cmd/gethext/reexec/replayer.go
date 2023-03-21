@@ -30,6 +30,10 @@ type ChainReplayer struct {
 	maxReExec uint64
 }
 
+func (re *ChainReplayer) StateCache() state.Database {
+	return re.db
+}
+
 func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
 	re.maxReExec = maxReExec
 }

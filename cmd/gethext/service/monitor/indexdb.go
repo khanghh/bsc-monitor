@@ -12,120 +12,125 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	lru "github.com/hashicorp/golang-lru"
 )
 
 const (
-	maxInfoCacheSize  = 1000
-	maxStateCacheSize = 1000
-	purgeInterval     = 10 * time.Minute
+	maxAccountCacheSize  = 1000
+	maxMetadataCacheSize = 1000
+	purgeInterval        = 10 * time.Minute
 )
 
-// IndexDB store additional indexing state along side state trie node for indexing purpose,
-// also take care of caching things
+// IndexDB store index data for account, also take care of caching things
 type IndexDB struct {
 	diskdb     ethdb.Database
 	trieCache  state.Database
-	infoCache  *lru.Cache
-	stateCache *lru.Cache // account indexing state cache
+	accCache   *lru.Cache // caching AccountDetail
+	stateCache *lru.Cache // caching AccountIndexState
 }
 
-func (db *IndexDB) AccountInfo(addr common.Address) (*AccountInfo, error) {
-	cacheKey := extdb.AccountInfoKey(addr)
-	var enc []byte
-	if cached, exist := db.infoCache.Get(cacheKey); exist {
-		enc = cached.([]byte)
-	} else {
-		enc = extdb.ReadAccountInfo(db.diskdb, addr)
-		db.infoCache.Add(cacheKey, enc)
-	}
-	accInfo := new(AccountInfo)
-	if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
-		return nil, ErrNoAccountInfo
-	}
-	return accInfo, nil
+func (db *IndexDB) DiskDB() ethdb.Database {
+	return db.diskdb
 }
 
-func (db *IndexDB) ContractInfo(addr common.Address) (*ContractInfo, error) {
-	cacheKey := extdb.AccountInfoKey(addr)
-	var enc []byte
-	if cached, exist := db.infoCache.Get(cacheKey); exist {
-		enc = cached.([]byte)
-	} else {
-		enc = extdb.ReadAccountInfo(db.diskdb, addr)
-		db.infoCache.Add(cacheKey, enc)
-	}
-	contractInfo := new(ContractInfo)
-	if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
-		return nil, ErrNoContractInfo
-	}
-	return contractInfo, nil
+func (db *IndexDB) NewBatch() ethdb.Batch {
+	return db.diskdb.NewBatch()
 }
 
-func (db *IndexDB) getAccountStateRLP(root common.Hash, addr common.Address) ([]byte, error) {
-	tr, err := db.trieCache.OpenTrie(root)
-	if err != nil {
-		return nil, ErrMissingTrieNode
-	}
-	enc, err := tr.TryGet(addr.Bytes())
-	if err != nil && len(enc) > 0 {
-		return nil, ErrNoAccountState
-	}
-	return enc, nil
-}
-
-func (db *IndexDB) getIndexStateHash(root common.Hash, addr common.Address) (common.Hash, error) {
-	enc, err := db.getAccountStateRLP(root, addr)
-	if err != nil {
-		return nilHash, err
-	}
-	return crypto.Keccak256Hash(addr.Bytes(), enc), nil
-}
-
-func (db *IndexDB) AccountExtState(root common.Hash, addr common.Address) (*AccountIndexState, error) {
-	cacheKey := crypto.Keccak256Hash(root.Bytes(), addr.Bytes())
-	var stateEnc []byte
-	if cached, exist := db.stateCache.Get(cacheKey); exist {
-		stateEnc = cached.([]byte)
-	} else {
-		enc, err := db.getAccountStateRLP(root, addr)
-		if err != nil {
+func (db *IndexDB) readAccountInfo(addr common.Address) (*AccountInfo, error) {
+	if enc := extdb.ReadAccountInfo(db.diskdb, addr); len(enc) > 0 {
+		accInfo := new(AccountInfo)
+		if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
 			return nil, err
 		}
-		hash := crypto.Keccak256Hash(addr.Bytes(), enc)
-		stateEnc = extdb.ReadAccountExtState(db.diskdb, hash)
+		return accInfo, nil
 	}
-	indexState := new(AccountIndexState)
-	if err := rlp.DecodeBytes(stateEnc, indexState); err != nil {
-		return nil, ErrNoAccountIndexState
-	}
-	return indexState, nil
+	return nil, ErrNoAccountInfo
 }
 
-func (db *IndexDB) PurgeCache() {
-	if db.infoCache != nil {
-		db.infoCache.Purge()
+func (db *IndexDB) readContractInfo(addr common.Address) (*ContractInfo, error) {
+	if enc := extdb.ReadContractInfo(db.diskdb, addr); len(enc) > 0 {
+		contractInfo := new(ContractInfo)
+		if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
+			return nil, err
+		}
+		return contractInfo, nil
 	}
-	if db.stateCache != nil {
-		db.stateCache.Purge()
+	return nil, ErrNoContractInfo
+}
+
+func (db *IndexDB) AccountDetail(addr common.Address) (*AccountDetail, error) {
+	if cached, ok := db.accCache.Get(addr); ok {
+		return cached.(*AccountDetail), nil
 	}
+	accInfo, err := db.readAccountInfo(addr)
+	if err != nil {
+		return nil, err
+	}
+	contractInfo, err := db.readContractInfo(addr)
+	if err != ErrNoContractInfo {
+		return nil, err
+	}
+	detail := &AccountDetail{
+		Address:      addr,
+		AccountInfo:  accInfo,
+		ContractInfo: contractInfo,
+	}
+	db.cacheAccountDetail(addr, detail)
+	return detail, nil
+}
+
+func (db *IndexDB) cacheAccountDetail(addr common.Address, detail *AccountDetail) {
+	db.accCache.Add(addr, detail)
 }
 
 func (db *IndexDB) OpenTrie(root common.Hash) (state.Trie, error) {
 	return db.trieCache.OpenTrie(root)
 }
 
+func (db *IndexDB) OpenIndexTrie(root common.Hash) (*extdb.TrieExt, error) {
+	tr, err := db.trieCache.OpenTrie(root)
+	if err != nil {
+		return nil, err
+	}
+	return extdb.NewTrieExt(db.diskdb, tr, extdb.AccountIndexStatePrefix), nil
+}
+
+func (db *IndexDB) cacheAccountIndexState(hash common.Hash, data *AccountIndexState) {
+	db.stateCache.Add(hash, data)
+}
+
+func (db *IndexDB) AccountIndexState(hash common.Hash) (*AccountIndexState, error) {
+	if cached, ok := db.stateCache.Get(hash); ok {
+		return cached.(*AccountIndexState), nil
+	}
+	if enc := extdb.ReadAccountIndexState(db.diskdb, hash); len(enc) > 0 {
+		stats := new(AccountIndexState)
+		if err := rlp.DecodeBytes(enc, &stats); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+func (db *IndexDB) PurgeCache() {
+	if db.accCache != nil {
+		db.accCache.Purge()
+	}
+	if db.stateCache != nil {
+		db.stateCache.Purge()
+	}
+}
+
 func NewIndexDB(diskdb ethdb.Database, trieCache state.Database) *IndexDB {
-	infoCache, _ := lru.New(maxInfoCacheSize)
-	stateCache, _ := lru.New(maxStateCacheSize)
-	db := &IndexDB{
+	accCache, _ := lru.New(maxAccountCacheSize)
+	metaCache, _ := lru.New(maxMetadataCacheSize)
+	return &IndexDB{
 		diskdb:     diskdb,
 		trieCache:  trieCache,
-		infoCache:  infoCache,
-		stateCache: stateCache,
+		accCache:   accCache,
+		stateCache: metaCache,
 	}
-	return db
 }
