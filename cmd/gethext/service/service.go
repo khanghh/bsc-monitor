@@ -12,10 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -101,7 +103,8 @@ func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Et
 		return nil, err
 	}
 
-	chainIndexer, err := monitor.NewChainIndexer(diskdb, eth.BlockChain())
+	stateCache := state.NewDatabaseWithConfigAndCache(eth.ChainDb(), &trie.Config{Cache: 16})
+	chainIndexer, err := monitor.NewChainIndexer(diskdb, stateCache, eth.BlockChain())
 	if err != nil {
 		return nil, err
 	}
