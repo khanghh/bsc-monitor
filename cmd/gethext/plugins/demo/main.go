@@ -6,7 +6,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -19,25 +21,32 @@ type demoPlugin struct {
 	config DemoConfig
 }
 
-func OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
+type callHook struct {
 }
 
-func OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
+func (h *callHook) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
+	log.Warn(fmt.Sprintf("OnTxStart %#x, index: %d", ctx.Transaction.Hash(), ctx.TxIndex))
 }
 
-func OnCallEnter(ctx *reexec.CallCtx) {
+func (h *callHook) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
+	log.Warn(fmt.Sprintf("OnTxEnd %#x", ctx.Transaction.Hash()))
 }
 
-func OnCallExit(ctx *reexec.CallCtx) {
+func (h *callHook) OnCallEnter(ctx *reexec.CallCtx) {
+	log.Warn(fmt.Sprintf("OnCallEnter %#x", hexutil.Bytes([]byte(ctx.Input))))
+}
 
+func (h *callHook) OnCallExit(ctx *reexec.CallCtx) {
+	log.Warn(fmt.Sprintf("OnCallExit %#x", hexutil.Bytes([]byte(ctx.Input))))
 }
 
 func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	bc := ctx.Eth.Chain()
 	db := state.NewDatabaseWithConfigAndCache(ctx.Eth.ChainDb(), &trie.Config{Cache: 16})
 	replayer := reexec.NewChainReplayer(db, bc, 100000)
-	block := bc.GetBlockByNumber(163454)
-	statedb, err := replayer.StateAtBlock(block)
+	block := bc.GetBlockByNumber(75454)
+	hook := &callHook{}
+	statedb, err := replayer.ReplayBlock(block, nil, hook)
 	if err != nil {
 		panic(err)
 	}
@@ -46,17 +55,6 @@ func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 		panic(err)
 	}
 	fmt.Println("root:", tr.Hash())
-
-	// statedb, err := replayer.ReplayTransaction(block, 1, nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// sender := common.HexToAddress("0x7ae2f5b9e386cd1b50a4550696d957cb4900f03a")
-	// balance := statedb.GetBalance(sender)
-	// if balance == nil {
-	// 	panic("no state")
-	// }
-	// fmt.Println("sender balance: ", balance.Uint64())
 }
 
 func (p *demoPlugin) runCountDown(ctx *plugin.PluginCtx) {
