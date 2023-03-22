@@ -20,9 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers"
 )
 
-type TxStartCallback func(txIndex uint64, gasLimit uint64)
-type TxEndfCallback func(txIndex uint64, restGas uint64)
-
 type CallFrame struct {
 	Type    string      `json:"type"`
 	From    string      `json:"from"`
@@ -37,32 +34,24 @@ type CallFrame struct {
 }
 
 type callTracer struct {
-	env             *vm.EVM
-	callstack       []CallFrame
-	config          callTracerConfig
-	interrupt       uint32 // Atomic flag to signal execution interruption
-	reason          error  // Textual reason for the interruption
-	txIndex         uint64
-	txStartCallback TxStartCallback
-	txEndCallback   TxEndfCallback
+	env       *vm.EVM
+	callstack []CallFrame
+	opts      *callTracerOptions
+	interrupt uint32 // Atomic flag to signal execution interruption
+	reason    error  // Textual reason for the interruption
 }
 
-type callTracerConfig struct {
+type callTracerOptions struct {
 	OnlyTopCall bool `json:"onlyTopCall"` // If true, call tracer won't collect any subcalls
 }
 
 // newCallTracer returns a native go tracer which tracks
 // call frames of a tx, and implements vm.EVMLogger.
-func newCallTracer(ctx *tracers.Context, onlyTopCall bool, txStartCallback TxStartCallback, txEndCallback TxEndfCallback) (tracers.Tracer, error) {
-	config := callTracerConfig{onlyTopCall}
-	// First callframe contains tx context info
-	// and is populated on start and end.
+func newCallTracer(opts *callTracerOptions) tracers.Tracer {
 	return &callTracer{
-		callstack:       make([]CallFrame, 1),
-		config:          config,
-		txStartCallback: txStartCallback,
-		txEndCallback:   txEndCallback,
-	}, nil
+		opts:      opts,
+		callstack: make([]callFrame, 1),
+	}
 }
 
 // CaptureStart implements the EVMLogger interface to initialize the tracing operation.
@@ -105,7 +94,7 @@ func (t *callTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *
 
 // CaptureEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	if t.config.OnlyTopCall {
+	if t.opts.OnlyTopCall {
 		return
 	}
 	// Skip if tracing was interrupted
@@ -128,7 +117,7 @@ func (t *callTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.
 // CaptureExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
 func (t *callTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
-	if t.config.OnlyTopCall {
+	if t.opts.OnlyTopCall {
 		return
 	}
 	size := len(t.callstack)
@@ -153,17 +142,9 @@ func (t *callTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
 }
 
 func (t *callTracer) CaptureTxStart(gasLimit uint64) {
-	if t.txStartCallback != nil {
-		t.txStartCallback(t.txIndex, gasLimit)
-	}
 }
 
 func (t *callTracer) CaptureTxEnd(restGas uint64) {
-	if t.txEndCallback != nil {
-		t.txEndCallback(t.txIndex, restGas)
-		t.txIndex += 1
-		t.reason = nil
-	}
 }
 
 // GetResult returns the json-encoded nested list of call traces, and any
