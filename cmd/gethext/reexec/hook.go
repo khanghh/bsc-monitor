@@ -2,6 +2,7 @@ package reexec
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -34,6 +35,7 @@ func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 		TxIndex:     t.txIndex,
 		Message:     &msg,
 	}
+	fmt.Println(t.hook)
 	t.hook.OnTxStart(t.txContext, gasLimit)
 }
 
@@ -67,9 +69,9 @@ func (t *CallTracerWithHook) CaptureEnter(typ vm.OpCode, from common.Address, to
 		txContext: t.txContext,
 		callFrame: &frame,
 	}
-	stackSize := len(t.ctxStack)
-	if stackSize > 0 {
-		callCtx.Parent = &t.ctxStack[stackSize-1]
+	size := len(t.ctxStack)
+	if size > 0 {
+		callCtx.Parent = &t.ctxStack[size-1]
 	}
 	t.ctxStack = append(t.ctxStack, callCtx)
 	t.hook.OnCallEnter(&callCtx)
@@ -80,6 +82,7 @@ func (t *CallTracerWithHook) CaptureExit(output []byte, gasUsed uint64, err erro
 	size := len(t.ctxStack)
 	callCtx := t.ctxStack[size-1]
 	t.ctxStack = t.ctxStack[:size-1]
+	callCtx.Error = t.handler.reason
 	t.hook.OnCallExit(&callCtx)
 }
 
@@ -102,7 +105,8 @@ func (t *CallTracerWithHook) Stop(err error) {
 
 func NewCallTracerWithHook(block *types.Block, signer types.Signer, hook ReExecHook) tracers.Tracer {
 	return &CallTracerWithHook{
-		block: block,
+		block:  block,
+		signer: signer,
 		handler: &callTracer{
 			opts:      &callTracerOptions{},
 			callstack: make([]callFrame, 1),

@@ -177,6 +177,9 @@ func (re *ChainReplayer) StateAtTransaction(block *types.Block, txIndex uint64) 
 
 // ReplayBlock re-execute all transactions in provided block, if base state not provided, base state will be generated instead
 func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, hook ReExecHook) (*state.StateDB, error) {
+	if block.NumberU64() == 0 {
+		return nil, errors.New("cannot replay genesis block")
+	}
 	var err error
 	if base == nil {
 		parent := re.bc.GetBlock(block.ParentHash(), block.NumberU64()-1)
@@ -189,15 +192,15 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 		}
 	}
 	if block.NumberU64()%200 == 0 {
-		re.cacheSystemContracts(block.Root(), base)
+		re.cacheSystemContracts(base.StateIntermediateRoot(), base)
 	}
-
 	signer := types.MakeSigner(re.bc.Config(), block.Number())
 	tracer := NewCallTracerWithHook(block, signer, hook)
 	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
 		return nil, fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err)
 	}
+	statedb.SetExpectedStateRoot(block.Root())
 	statedb.Finalise(re.bc.Config().IsEIP158(block.Number()))
 	statedb.AccountsIntermediateRoot()
 	// commit to cache the state to database
