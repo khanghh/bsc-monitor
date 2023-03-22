@@ -6,7 +6,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
@@ -33,28 +32,48 @@ func (h *callHook) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
 }
 
 func (h *callHook) OnCallEnter(ctx *reexec.CallCtx) {
-	log.Warn(fmt.Sprintf("OnCallEnter %#x", hexutil.Bytes([]byte(ctx.Input))))
+	method := [4]byte{}
+	if len(ctx.Input) >= 4 {
+		copy(method[:], ctx.Input[0:4])
+	}
+	log.Warn(fmt.Sprintf("OnCallEnter %#x", method))
 }
 
 func (h *callHook) OnCallExit(ctx *reexec.CallCtx) {
-	log.Warn(fmt.Sprintf("OnCallExit %#x", hexutil.Bytes([]byte(ctx.Input))))
+	method := [4]byte{}
+	if len(ctx.Input) >= 4 {
+		copy(method[:], ctx.Input[0:4])
+	}
+	log.Warn(fmt.Sprintf("OnCallExit %#x", method))
+	if ctx.Error != nil {
+		log.Error(fmt.Sprintf("OnCallExit reverted. tx: %#v", ctx.Transaction.Hash()))
+	}
 }
 
 func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	bc := ctx.Eth.Chain()
 	db := state.NewDatabaseWithConfigAndCache(ctx.Eth.ChainDb(), &trie.Config{Cache: 16})
 	replayer := reexec.NewChainReplayer(db, bc, 100000)
-	block := bc.GetBlockByNumber(75454)
 	hook := &callHook{}
-	statedb, err := replayer.ReplayBlock(block, nil, hook)
-	if err != nil {
-		panic(err)
+	start := time.Now()
+	var (
+		err     error
+		statedb *state.StateDB
+	)
+	for i := 93015; i <= 163454; i++ {
+		block := bc.GetBlockByNumber(uint64(i))
+		statedb, err = replayer.ReplayBlock(block, statedb, hook)
+		if err != nil {
+			panic(err)
+		}
 	}
+	// statedb, err := replayer.StateAtBlock(block)
 	tr, err := statedb.Trie()
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("root:", tr.Hash())
+	fmt.Printf("took: %v\n", time.Since(start))
 }
 
 func (p *demoPlugin) runCountDown(ctx *plugin.PluginCtx) {
