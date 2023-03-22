@@ -19,6 +19,19 @@ type demoPlugin struct {
 	config DemoConfig
 }
 
+func OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
+}
+
+func OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
+}
+
+func OnCallEnter(ctx *reexec.CallCtx) {
+}
+
+func OnCallExit(ctx *reexec.CallCtx) {
+
+}
+
 func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	bc := ctx.Eth.Chain()
 	db := state.NewDatabaseWithConfigAndCache(ctx.Eth.ChainDb(), &trie.Config{Cache: 16})
