@@ -7,7 +7,6 @@
 package monitor
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -27,9 +26,8 @@ type ChainIndexer struct {
 	blockchain *core.BlockChain
 	replayer   *reexec.ChainReplayer
 
-	lastBlock   *types.Block
-	statedb     *state.StateDB
-	pendingData *blockIndex
+	lastBlock *types.Block
+	indexData *blockIndex
 
 	status  uint32
 	pauseCh chan bool
@@ -38,14 +36,12 @@ type ChainIndexer struct {
 }
 
 // processBlock re-executes every transactions in block and extracts neccessary info into indexdb
-func (idx *ChainIndexer) processBlock(block *types.Block) error {
-	time.Sleep(1 * time.Second)
-	statedb, err := idx.replayer.ReplayBlock(block, idx.statedb, nil)
+func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, error) {
+	statedb, err := idx.replayer.ReplayBlock(block, statedb, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	fmt.Println(statedb.IntermediateRoot(true))
-	return nil
+	return statedb, nil
 }
 
 func (idx *ChainIndexer) indexingLoop() {
@@ -60,6 +56,11 @@ func (idx *ChainIndexer) indexingLoop() {
 			}
 		}
 	}
+	statedb, err := idx.replayer.StateAtBlock(idx.lastBlock)
+	if err != nil {
+		log.Error("Could not get historical state", "number", idx.lastBlock.NumberU64(), "root", idx.lastBlock.Root())
+		return
+	}
 	proctime := time.Duration(0)
 	for {
 		select {
@@ -73,9 +74,10 @@ func (idx *ChainIndexer) indexingLoop() {
 		}
 		block := idx.blockchain.GetBlockByNumber(idx.lastBlock.NumberU64() + 1)
 		if block != nil {
-			log.Debug("Indexing block", "number", block.Number())
 			start := time.Now()
-			if err := idx.processBlock(block); err != nil {
+			log.Debug("Indexing block", "number", block.Number())
+			statedb, err = idx.processBlock(block, statedb)
+			if err != nil {
 				log.Error("Indexer could not process block", "number", block.NumberU64())
 				return
 			}
@@ -83,7 +85,7 @@ func (idx *ChainIndexer) indexingLoop() {
 			proctime += time.Since(start)
 			if proctime > 10*time.Second {
 				proctime = 0
-				log.Info("Indexing progress", "number", idx.lastBlock.NumberU64(), "accounts", len(idx.pendingData.DirtyAccounts()))
+				log.Info("Indexing progress", "number", idx.lastBlock.NumberU64(), "accounts", len(idx.indexData.DirtyAccounts()))
 			}
 			continue
 		}
@@ -108,18 +110,9 @@ func (idx *ChainIndexer) Run() {
 	} else {
 		lastBlock = idx.blockchain.GetBlockByHash(lastBlockHash)
 	}
-	statedb, err := idx.replayer.StateAtBlock(lastBlock)
-	if err != nil {
-		log.Error("Could not get historical state", "number", lastBlock.NumberU64(), "root", lastBlock.Root())
-		return
-	}
-	idx.statedb = statedb
+
 	idx.lastBlock = lastBlock
-	idx.pendingData = newBlockIndex(idx.indexdb, lastBlock)
-	if err != nil {
-		log.Error("Could not initialize indexing data", "number", lastBlock.NumberU64(), "root", lastBlock.Root())
-		return
-	}
+	idx.indexData = newBlockIndex(idx.indexdb, lastBlock)
 	if !atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
 		return
 	}

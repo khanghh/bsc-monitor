@@ -40,6 +40,7 @@ func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
 
 // cacheSystemContracts cache account trie and storage trie of system contracts
 func (re *ChainReplayer) cacheSystemContracts(root common.Hash, statedb *state.StateDB) {
+	// TODO: Cache neccesary system contract states for indexing
 	tr, _ := statedb.Trie()
 	contractAddr := common.HexToAddress(systemcontracts.ValidatorContract)
 	str := statedb.StorageTrie(contractAddr)
@@ -190,7 +191,10 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	if block.NumberU64()%200 == 0 {
 		re.cacheSystemContracts(block.Root(), base)
 	}
-	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{})
+
+	signer := types.MakeSigner(re.bc.Config(), block.Number())
+	tracer := NewCallTracerWithHook(block, signer, hook)
+	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
 		return nil, fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err)
 	}
