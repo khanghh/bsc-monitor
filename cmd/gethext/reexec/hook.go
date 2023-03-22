@@ -2,7 +2,6 @@ package reexec
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -20,9 +19,9 @@ type CallTracerWithHook struct {
 	hook    ReExecHook
 
 	// variables to track current transaction execution
-	txIndex   uint64 // index of the current transaction being executed
-	txContext *TxContext
-	ctxStack  []CallCtx // context stack of the current transaction being execute
+	txIndex   uint64     // index of the current transaction
+	txContext *TxContext // context of the current transaction
+	ctxStack  []CallCtx  // call stack of the current transaction
 }
 
 func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
@@ -35,7 +34,6 @@ func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 		TxIndex:     t.txIndex,
 		Message:     &msg,
 	}
-	fmt.Println(t.hook)
 	t.hook.OnTxStart(t.txContext, gasLimit)
 }
 
@@ -57,6 +55,9 @@ func (t *CallTracerWithHook) CaptureStart(env *vm.EVM, from common.Address, to c
 
 func (t *CallTracerWithHook) CaptureEnd(output []byte, gasUsed uint64, d time.Duration, err error) {
 	t.handler.CaptureEnd(output, gasUsed, d, err)
+	if err != nil {
+		t.txContext.Reverted = true
+	}
 }
 
 func (t *CallTracerWithHook) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
@@ -82,7 +83,7 @@ func (t *CallTracerWithHook) CaptureExit(output []byte, gasUsed uint64, err erro
 	size := len(t.ctxStack)
 	callCtx := t.ctxStack[size-1]
 	t.ctxStack = t.ctxStack[:size-1]
-	callCtx.Error = t.handler.reason
+	callCtx.Error = err
 	t.hook.OnCallExit(&callCtx)
 }
 
