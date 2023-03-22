@@ -12,8 +12,8 @@ type TxContext struct {
 	Block       *types.Block       // block in which the transaction was included
 	Transaction *types.Transaction // the transaction in block
 	TxIndex     uint64             // index of the transaction within the block
-	Message     *types.Message
-	Error       string
+	Message     *types.Message     // message derived from the transaction
+	Reverted    bool               // the state of transaction successful or reverted
 }
 
 // CallCtx provides context information for a function call
@@ -21,7 +21,7 @@ type CallCtx struct {
 	*txContext
 	*callFrame
 	Parent *CallCtx // pointer to the parent method context that executes this call
-	Error  string
+	Error  error
 }
 
 // ReExecHook provides a way to hook into the re-execution process
