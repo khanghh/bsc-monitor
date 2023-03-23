@@ -149,6 +149,7 @@ func (m *PluginManager) Stop() error {
 			log.Error("Error occur when trying to stop plugin", "plugin", name, "error", err)
 		}
 	}
+	log.Info("PluginManager stopped")
 	return nil
 }
 

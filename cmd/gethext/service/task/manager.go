@@ -122,6 +122,7 @@ func (tm *TaskManager) Stop() {
 		tm.KillTask(taskName)
 	}
 	tm.wg.Wait()
+	log.Info("TaskManager stopped")
 }
 
 func NewTaskManager(cfg *Config) (*TaskManager, error) {
