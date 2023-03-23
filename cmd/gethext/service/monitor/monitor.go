@@ -119,6 +119,7 @@ func (m *ChainMonitor) Stop() error {
 	close(m.quitCh)
 	m.newTxsSubs.Unsubscribe()
 	m.wg.Wait()
+	log.Info("ChainMonitor stopped")
 	return nil
 }
 
