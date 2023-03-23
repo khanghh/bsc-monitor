@@ -97,11 +97,11 @@ func (idx *ChainIndexer) Status() task.TaskStatus {
 	return task.TaskStatus(idx.status)
 }
 
-func (idx *ChainIndexer) Run() {
+func (idx *ChainIndexer) Start() error {
 	// Check the current task status before running
 	status := atomic.LoadUint32(&idx.status)
 	if status != uint32(task.StatusPending) && status != uint32(task.StatusPaused) {
-		return
+		return nil
 	}
 	var lastBlock *types.Block
 	lastBlockHash := extdb.ReadLastIndexBlock(idx.diskdb)
@@ -114,10 +114,11 @@ func (idx *ChainIndexer) Run() {
 	idx.lastBlock = lastBlock
 	idx.indexData = newBlockIndex(idx.indexdb, lastBlock)
 	if !atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
-		return
+		return nil
 	}
 	log.Info("Start indexing blockchain", "number", idx.lastBlock.Number(), "root", idx.lastBlock.Root())
 	go idx.indexingLoop()
+	return nil
 }
 
 func (idx *ChainIndexer) Wait() {
@@ -137,12 +138,13 @@ func (idx *ChainIndexer) Resume() {
 	}
 }
 
-func (idx *ChainIndexer) Abort() {
-}
-
 func (idx *ChainIndexer) Stop() {
+	if atomic.LoadUint32(&idx.status) != uint32(task.StatusRunning) {
+		return
+	}
 	close(idx.quitCh)
 	idx.Wait()
+	log.Info("ChainIndexer stopped")
 }
 
 func NewChainIndexer(diskdb ethdb.Database, stateCache state.Database, bc *core.BlockChain) (*ChainIndexer, error) {
