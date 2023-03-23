@@ -32,9 +32,11 @@ type MonitorServiceOptions struct {
 	MonitorConfig *monitor.Config
 	ReExecConfig  *task.Config
 	PluginDir     string
+	NoIndexing    bool
 }
 
 type MonitorService struct {
+	opts          *MonitorServiceOptions
 	chainMonitor  *monitor.ChainMonitor
 	chainIndexer  *monitor.ChainIndexer
 	pluginManager *plugin.PluginManager
@@ -54,9 +56,11 @@ func (s *MonitorService) Start() error {
 		log.Error("Could not start chain monitor", "error", err)
 		return err
 	}
-	if err := s.taskManager.RunTask(indexerTaskName, s.chainIndexer); err != nil {
-		log.Error("Could not start chain indexer", "error", err)
-		return err
+	if !s.opts.NoIndexing {
+		if err := s.chainIndexer.Start(); err != nil {
+			log.Error("Could not start chain indexer", "error", err)
+			return err
+		}
 	}
 	return nil
 }
@@ -68,13 +72,9 @@ func (s *MonitorService) Stop() error {
 	case <-s.quitCh:
 	default:
 		s.pluginManager.Stop()
-		log.Info("PluginManager stopped")
 		s.chainMonitor.Stop()
-		log.Info("ChainMonitor stopped")
 		s.chainIndexer.Stop()
-		log.Info("ChainIndexer stopped")
 		s.taskManager.Stop()
-		log.Info("TaskManager stopped")
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
@@ -120,6 +120,7 @@ func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Et
 	}
 
 	instance := &MonitorService{
+		opts:          opts,
 		chainMonitor:  chainMonitor,
 		chainIndexer:  chainIndexer,
 		pluginManager: pluginManager,

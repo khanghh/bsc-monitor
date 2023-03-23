@@ -50,8 +50,8 @@ import (
 )
 
 const (
-	clientIdentifier = "geth" // Client identifier to advertise over the network
-	pluginDir        = "plugins"
+	clientIdentifier = "geth"    // Client identifier to advertise over the network
+	defaultPluginDir = "plugins" // Default directory for plugin files
 )
 
 var (
@@ -219,6 +219,11 @@ var (
 		utils.MetricsInfluxDBBucketFlag,
 		utils.MetricsInfluxDBOrganizationFlag,
 	}
+
+	monitorFlags = []cli.Flag{
+		pluginDirFlag,
+		noIndexFlag,
+	}
 )
 
 func init() {
@@ -266,6 +271,7 @@ func init() {
 	app.Flags = append(app.Flags, consoleFlags...)
 	app.Flags = append(app.Flags, debug.Flags...)
 	app.Flags = append(app.Flags, metricsFlags...)
+	app.Flags = append(app.Flags, monitorFlags...)
 
 	app.Before = func(ctx *cli.Context) error {
 		return debug.Setup(ctx)
@@ -333,24 +339,18 @@ func prepare(ctx *cli.Context) {
 	go metrics.CollectProcessMetrics(3 * time.Second)
 }
 
-func newMonitor(cfg *gethConfig, stack *node.Node, ethereum *eth.Ethereum) *service.MonitorService {
-	instance, err := service.NewMonitorService(&service.MonitorServiceOptions{
-		MonitorConfig: &cfg.Monitor,
-		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
-	}, stack, ethereum)
-	if err != nil {
-		utils.Fatalf("Could not initialize chain monitor service")
+func resolvePluginDir(pluginDir string) string {
+	if strings.HasPrefix(pluginDir, "/") {
+		return pluginDir
 	}
-	if err := instance.Start(); err != nil {
-		utils.Fatalf("Could not start chain monitor service")
+	if pluginDir == "" {
+		execPath, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		return path.Join(path.Dir(execPath), defaultPluginDir)
 	}
-	return instance
-}
-func makeMonitorServiceConfig(ctx *cli.Context, cfg *gethConfig) *service.MonitorServiceOptions {
-	return &service.MonitorServiceOptions{
-		MonitorConfig: &cfg.Monitor,
-		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
-	}
+	return pluginDir
 }
 
 // geth is the main entry point into the system if no special subcommand is ran.
@@ -368,7 +368,8 @@ func geth(ctx *cli.Context) error {
 
 	serviceCfg := &service.MonitorServiceOptions{
 		MonitorConfig: &cfg.Monitor,
-		PluginDir:     path.Join(cfg.Node.DataDir, pluginDir),
+		PluginDir:     resolvePluginDir(ctx.GlobalString(pluginDirFlag.Name)),
+		NoIndexing:    ctx.GlobalBool(noIndexFlag.Name),
 	}
 	instance, err := service.NewMonitorService(serviceCfg, stack, ethereum)
 	if err != nil {
