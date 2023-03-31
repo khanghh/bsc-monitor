@@ -375,6 +375,7 @@ func geth(ctx *cli.Context) error {
 	if err != nil {
 		utils.Fatalf("Could not initialize chain monitor service")
 	}
+	stack.RegisterAPIs(instance.APIs())
 	stack.RegisterLifecycle(instance)
 	startNode(ctx, stack, ethereum.APIBackend, false)
 	stack.Wait()

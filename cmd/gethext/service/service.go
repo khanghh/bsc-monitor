@@ -85,8 +85,9 @@ func (s *MonitorService) Stop() error {
 func (s *MonitorService) APIs() []rpc.API {
 	return []rpc.API{
 		{
-			Namespace: "indexer",
+			Namespace: "idx",
 			Version:   "1.0",
+			Service:   monitor.NewIndexerAPI(s.chainIndexer),
 			Public:    true,
 		},
 	}
