@@ -21,16 +21,16 @@ import (
 )
 
 type CallFrame struct {
-	Type    string      `json:"type"`
-	From    string      `json:"from"`
-	To      string      `json:"to,omitempty"`
-	Value   string      `json:"value,omitempty"`
-	Gas     string      `json:"gas"`
-	GasUsed string      `json:"gasUsed"`
-	Input   string      `json:"input"`
-	Output  string      `json:"output,omitempty"`
-	Error   string      `json:"error,omitempty"`
-	Calls   []CallFrame `json:"calls,omitempty"`
+	Type    vm.OpCode      `json:"type"`
+	From    common.Address `json:"from"`
+	To      common.Address `json:"to,omitempty"`
+	Value   *big.Int       `json:"value,omitempty"`
+	Gas     uint64         `json:"gas"`
+	GasUsed uint64         `json:"gasUsed"`
+	Input   []byte         `json:"input"`
+	Output  []byte         `json:"output,omitempty"`
+	Error   error          `json:"error,omitempty"`
+	Calls   []CallFrame    `json:"calls,omitempty"`
 }
 
 type callTracer struct {
@@ -59,28 +59,28 @@ func (t *callTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Ad
 	t.env = env
 	t.callstack = make([]CallFrame, 1)
 	t.callstack[0] = CallFrame{
-		Type:  "CALL",
-		From:  addrToHex(from),
-		To:    addrToHex(to),
-		Input: bytesToHex(input),
-		Gas:   uintToHex(gas),
-		Value: bigToHex(value),
+		Type:  vm.CALL,
+		From:  from,
+		To:    to,
+		Input: input,
+		Gas:   gas,
+		Value: value,
 	}
 	if create {
-		t.callstack[0].Type = "CREATE"
+		t.callstack[0].Type = vm.CREATE
 	}
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
 func (t *callTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
-	t.callstack[0].GasUsed = uintToHex(gasUsed)
+	t.callstack[0].GasUsed = gasUsed
 	if err != nil {
-		t.callstack[0].Error = err.Error()
+		t.callstack[0].Error = err
 		if err.Error() == "execution reverted" && len(output) > 0 {
-			t.callstack[0].Output = bytesToHex(output)
+			t.callstack[0].Output = output
 		}
 	} else {
-		t.callstack[0].Output = bytesToHex(output)
+		t.callstack[0].Output = output
 	}
 }
 
@@ -104,12 +104,12 @@ func (t *callTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.
 	}
 
 	call := CallFrame{
-		Type:  typ.String(),
-		From:  addrToHex(from),
-		To:    addrToHex(to),
-		Input: bytesToHex(input),
-		Gas:   uintToHex(gas),
-		Value: bigToHex(value),
+		Type:  typ,
+		From:  from,
+		To:    to,
+		Input: input,
+		Gas:   gas,
+		Value: value,
 	}
 	t.callstack = append(t.callstack, call)
 }
@@ -129,14 +129,14 @@ func (t *callTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
 	t.callstack = t.callstack[:size-1]
 	size -= 1
 
-	call.GasUsed = uintToHex(gasUsed)
+	call.GasUsed = gasUsed
 	if err == nil {
-		call.Output = bytesToHex(output)
+		call.Output = output
 	} else {
-		call.Error = err.Error()
-		if call.Type == "CREATE" || call.Type == "CREATE2" {
-			call.To = ""
-		}
+		call.Error = err
+		// if call.Type == "CREATE" || call.Type == "CREATE2" {
+		// 	call.To = ""
+		// }
 	}
 	t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
 }

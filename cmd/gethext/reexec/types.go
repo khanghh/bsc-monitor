@@ -14,6 +14,7 @@ type TxContext struct {
 	TxIndex     uint64             // index of the transaction within the block
 	Message     *types.Message     // message derived from the transaction
 	Reverted    bool               // the state of transaction successful or reverted
+	CallStack   []callFrame
 }
 
 // CallCtx provides context information for a function call
