@@ -37,7 +37,7 @@ type ChainIndexer struct {
 
 // processBlock re-executes every transactions in block and extracts neccessary info into indexdb
 func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, error) {
-	statedb, err := idx.replayer.ReplayBlock(block, statedb, nil)
+	statedb, err := idx.replayer.ReplayBlock(block, statedb, neweBlockParser(idx.indexData))
 	if err != nil {
 		return nil, err
 	}
