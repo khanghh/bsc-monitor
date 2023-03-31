@@ -39,6 +39,7 @@ func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 
 func (t *CallTracerWithHook) CaptureTxEnd(restGas uint64) {
 	t.handler.CaptureTxEnd(restGas)
+	t.txContext.CallStack = t.handler.callstack
 	t.hook.OnTxEnd(t.txContext, restGas)
 	t.txContext = nil
 	t.txIndex += 1

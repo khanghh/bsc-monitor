@@ -8,7 +8,6 @@ package monitor
 
 import (
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type IndexerAPI struct {
@@ -28,14 +27,6 @@ func (api *IndexerAPI) AccountTokenTxList(addr common.Hash, offset uint64, limit
 }
 
 func (api *IndexerAPI) TokenHolderList(addr common.Address, offset uint64, limit uint64) ([]common.Address, error) {
-	return nil, nil
-}
-
-func (api *IndexerAPI) AccountList(addr common.Hash, offset uint64, limit uint64) ([]common.Address, error) {
-	return nil, nil
-}
-
-func (api *IndexerAPI) ContractList(addr common.Hash, offset uint64, limit uint64) (types.Transactions, error) {
 	return nil, nil
 }
 
