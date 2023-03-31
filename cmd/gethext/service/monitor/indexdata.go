@@ -56,6 +56,10 @@ func (s *blockIndex) AccountChangeSet(addr common.Address) *AccountIndexData {
 	return s.dirtyChanges[addr]
 }
 
+func (s *blockIndex) SetAccountDetail(detail *AccountDetail) {
+	s.dirtyAccounts[detail.Address] = detail
+}
+
 func (s *blockIndex) SetAccountInfo(addr common.Address, info *AccountInfo) {
 	s.AccountDetail(addr).AccountInfo = info
 }
