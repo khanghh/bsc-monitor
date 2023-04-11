@@ -25,7 +25,7 @@ import (
 )
 
 type ChainReplayer struct {
-	db        state.Database
+	db        state.Database // isolated memory state cache for chain re-execution
 	bc        *core.BlockChain
 	maxReExec uint64
 }
@@ -38,14 +38,20 @@ func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
 	re.maxReExec = maxReExec
 }
 
-// cacheSystemContracts cache account trie and storage trie of system contracts
+// cacheSystemContracts caches account trie and storage trie of system contracts to live state cache.
+// Parlia use live database to call system contracts, when replay transactions old state has been dereferenced,
+// we must copy them to the live database `re.bc.StateCache()`
 func (re *ChainReplayer) cacheSystemContracts(root common.Hash, statedb *state.StateDB) {
-	// TODO: Cache neccesary system contract states for indexing
-	tr, _ := statedb.Trie()
 	contractAddr := common.HexToAddress(systemcontracts.ValidatorContract)
+	addrHash := crypto.Keccak256Hash(contractAddr[:])
 	str := statedb.StorageTrie(contractAddr)
+	if _, err := re.bc.StateCache().OpenStorageTrie(addrHash, str.Hash()); err == nil {
+		return
+	}
+	log.Debug("Caching system contracts state to the live state cache for replaying", "root", root)
+	tr, _ := statedb.Trie()
 	re.bc.StateCache().CacheAccount(root, tr)
-	re.bc.StateCache().CacheStorage(crypto.Keccak256Hash(contractAddr[:]), str.Hash(), str)
+	re.bc.StateCache().CacheStorage(addrHash, str.Hash(), str)
 }
 
 // StateAtBlock returns statedb after all transactions in block was executed
@@ -198,6 +204,7 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	tracer := NewCallTracerWithHook(block, signer, hook)
 	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
+		// panic(fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err))
 		return nil, fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err)
 	}
 	statedb.SetExpectedStateRoot(block.Root())
