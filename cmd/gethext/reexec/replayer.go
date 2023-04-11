@@ -48,7 +48,7 @@ func (re *ChainReplayer) cacheSystemContracts(root common.Hash, statedb *state.S
 	if _, err := re.bc.StateCache().OpenStorageTrie(addrHash, str.Hash()); err == nil {
 		return
 	}
-	log.Debug("Caching system contracts state to the live state cache for replaying", "root", root)
+	log.Debug("Caching system contracts state for replaying", "root", root)
 	tr, _ := statedb.Trie()
 	re.bc.StateCache().CacheAccount(root, tr)
 	re.bc.StateCache().CacheStorage(addrHash, str.Hash(), str)
