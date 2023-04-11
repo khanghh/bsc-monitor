@@ -134,8 +134,7 @@ func (s *blockIndex) commitAccounts(batch ethdb.Batch) error {
 }
 
 // Commit write data collected of this block to the given writer
-func (s *blockIndex) Commit(withState bool) error {
-	batch := s.indexdb.NewBatch()
+func (s *blockIndex) Commit(batch ethdb.Batch, withState bool) error {
 	// write account info
 	if err := s.commitAccounts(batch); err != nil {
 		return err
@@ -144,7 +143,7 @@ func (s *blockIndex) Commit(withState bool) error {
 	if err := s.commitChanges(batch, withState); err != nil {
 		return err
 	}
-	return batch.Write()
+	return nil
 }
 
 func newBlockIndex(indexdb *IndexDB, block *types.Block) *blockIndex {
