@@ -188,7 +188,7 @@ func NewChainIndexer(diskdb ethdb.Database, stateCache state.Database, bc *core.
 		diskdb:     diskdb,
 		indexdb:    NewIndexDB(diskdb, stateCache),
 		blockchain: bc,
-		replayer:   reexec.NewChainReplayer(stateCache, bc, 10000),
+		replayer:   reexec.NewChainReplayer(stateCache, bc, 200000),
 		pauseCh:    make(chan bool),
 		termCh:     make(chan struct{}),
 		quitCh:     make(chan struct{}),
