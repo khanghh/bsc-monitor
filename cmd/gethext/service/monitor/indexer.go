@@ -105,9 +105,8 @@ func (idx *ChainIndexer) indexingLoop() {
 		block := idx.blockchain.GetBlockByNumber(idx.lastBlock.NumberU64() + 1)
 		if block != nil {
 			log.Debug("Indexing block", "number", block.Number())
-			var blockData *blockIndex
 			start := time.Now()
-			statedb, blockData, err = idx.processBlock(block, statedb)
+			newstate, blockData, err := idx.processBlock(block, statedb)
 			if err != nil {
 				log.Error("Indexer could not process block", "number", block.NumberU64(), "error", err)
 				// retry process block
@@ -117,6 +116,7 @@ func (idx *ChainIndexer) indexingLoop() {
 			if elapsed > 100*time.Millisecond {
 				log.Error(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
 			}
+			statedb = newstate
 			idx.lastBlock = block
 			idx.indexData = append(idx.indexData, blockData)
 			proctime += time.Since(start)

@@ -139,7 +139,7 @@ func (s *blockIndex) Commit(batch ethdb.Batch, withState bool) error {
 	if err := s.commitAccounts(batch); err != nil {
 		return err
 	}
-	// write change set and state if
+	// write change set and state
 	if err := s.commitChanges(batch, withState); err != nil {
 		return err
 	}

@@ -204,7 +204,6 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	tracer := NewCallTracerWithHook(block, signer, hook)
 	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
-		// panic(fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err))
 		return nil, fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err)
 	}
 	statedb.SetExpectedStateRoot(block.Root())
