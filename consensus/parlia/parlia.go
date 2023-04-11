@@ -681,10 +681,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		extraSuffix := len(header.Extra) - extraSeal
 		// fmt.Println("validatorsBytes:", hexutil.Bytes(validatorsBytes))
 		// fmt.Println("header.Extra:", hexutil.Bytes(header.Extra[extraVanity:extraSuffix]))
-		parentNum := new(big.Int).Sub(header.Number, common.Big1)
-		parentHead := chain.GetHeader(header.ParentHash, parentNum.Uint64())
 		if !bytes.Equal(header.Extra[extraVanity:extraSuffix], validatorsBytes) {
-			log.Error("Unable to get validator list", "parent", parentNum.Uint64(), "root", parentHead.Root, "validators", newValidators)
 			return errMismatchingEpochValidators
 		}
 	}
