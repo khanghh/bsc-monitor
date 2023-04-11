@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -60,6 +61,7 @@ func (idx *ChainIndexer) cleanUpAndStop() {
 }
 
 func (idx *ChainIndexer) commitIndexData(indexData []*blockIndex) {
+	start := time.Now()
 	batch := idx.diskdb.NewBatch()
 	first := indexData[0].block.NumberU64()
 	last := indexData[len(indexData)-1].block.NumberU64()
@@ -73,7 +75,9 @@ func (idx *ChainIndexer) commitIndexData(indexData []*blockIndex) {
 		log.Crit("Faield to commit index data", "range", []uint64{first, last}, "error", err)
 	}
 	idx.indexData = make([]*blockIndex, 0)
-	log.Info("Persisted indexing data", "range", []uint64{first, last}, "accounts", numAccount)
+	elapsed := time.Since(start)
+	dirty := common.StorageSize(batch.ValueSize())
+	log.Info("Persisted indexing data", "range", []uint64{first, last}, "accounts", numAccount, "dirty", dirty, "elapsed", elapsed)
 }
 
 func (idx *ChainIndexer) indexingLoop() {
