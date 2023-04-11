@@ -8,7 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 type RLPUnmarshaler interface {
@@ -101,16 +100,12 @@ func (s *TrieExt) Commit(writer ethdb.KeyValueWriter) error {
 	if writer == nil {
 		writer = s.diskdb
 	}
-	iter := trie.NewIterator(s.trie.NodeIterator([]byte{}))
+
 	var err error
-	for iter.Next() {
-		val, exist := s.changes[crypto.Keccak256Hash(iter.Key)]
-		if !exist {
-			continue
-		}
-		dbKey := append(s.prefix, crypto.Keccak256Hash(iter.Value).Bytes()...)
-		if len(val) > 0 {
-			err = writer.Put(dbKey[:], val)
+	for hashKey, extVal := range s.changes {
+		dbKey := append(s.prefix, s.keyCache[hashKey]...)
+		if len(extVal) > 0 {
+			err = writer.Put(dbKey[:], extVal)
 		} else {
 			err = writer.Delete(dbKey[:])
 		}
@@ -118,7 +113,7 @@ func (s *TrieExt) Commit(writer ethdb.KeyValueWriter) error {
 			return err
 		}
 	}
-	return iter.Err
+	return nil
 }
 
 func NewTrieExt(db ethdb.Database, tr state.Trie, prefix []byte) *TrieExt {
