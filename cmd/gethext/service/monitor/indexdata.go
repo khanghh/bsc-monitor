@@ -69,6 +69,9 @@ func (s *blockIndex) SetContractInfo(addr common.Address, info *ContractInfo) {
 }
 
 func (s *blockIndex) commitStates(batch ethdb.Batch) error {
+	if len(s.dirtyStates) == 0 {
+		return nil
+	}
 	tr, err := s.indexdb.OpenIndexTrie(s.block.Root())
 	if err != nil {
 		return err
