@@ -7,6 +7,7 @@
 package monitor
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,9 @@ type ChainIndexer struct {
 // processBlock re-executes every transactions in block and extracts neccessary info into indexdb
 func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, *blockIndex, error) {
 	data := newBlockIndex(idx.indexdb, block)
+	if idx.lastBlock.Root() == block.Root() {
+		return statedb, data, nil
+	}
 	statedb, err := idx.replayer.ReplayBlock(block, statedb, newBlockParser(data))
 	if err != nil {
 		return nil, nil, err
@@ -100,14 +104,18 @@ func (idx *ChainIndexer) indexingLoop() {
 		}
 		block := idx.blockchain.GetBlockByNumber(idx.lastBlock.NumberU64() + 1)
 		if block != nil {
-			start := time.Now()
 			log.Debug("Indexing block", "number", block.Number())
 			var blockData *blockIndex
+			start := time.Now()
 			statedb, blockData, err = idx.processBlock(block, statedb)
 			if err != nil {
 				log.Error("Indexer could not process block", "number", block.NumberU64(), "error", err)
 				// retry process block
 				continue
+			}
+			elapsed := time.Since(start)
+			if elapsed > 100*time.Millisecond {
+				log.Error(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
 			}
 			idx.lastBlock = block
 			idx.indexData = append(idx.indexData, blockData)
