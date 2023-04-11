@@ -1126,7 +1126,12 @@ LOOP:
 		// subscribe before fillTransactions
 		txsCh := make(chan core.NewTxsEvent, txChanSize)
 		sub := w.eth.TxPool().SubscribeNewTxsEvent(txsCh)
-		defer sub.Unsubscribe()
+		// if TxPool has been stopped, `sub` would be nil, it could happen on shutdown.
+		if sub == nil {
+			log.Info("commitWork SubscribeNewTxsEvent return nil")
+		} else {
+			defer sub.Unsubscribe()
+		}
 
 		// Fill pending transactions from the txpool
 		fillStart := time.Now()
@@ -1137,7 +1142,9 @@ LOOP:
 			log.Debug("commitWork abort", "err", err)
 			return
 		case errors.Is(err, errBlockInterruptedByRecommit):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByTimeout):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByOutOfGas):
 			// break the loop to get the best work
 			log.Debug("commitWork finish", "reason", err)
@@ -1196,7 +1203,9 @@ LOOP:
 		}
 		// if sub's channel if full, it will block other NewTxsEvent subscribers,
 		// so unsubscribe ASAP and Unsubscribe() is re-enterable, safe to call several time.
-		sub.Unsubscribe()
+		if sub != nil {
+			sub.Unsubscribe()
+		}
 	}
 	// get the most profitable work
 	bestWork := workList[0]
