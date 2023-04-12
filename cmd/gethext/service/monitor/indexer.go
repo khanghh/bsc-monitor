@@ -22,7 +22,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-const safeBlockDistance = 7
+const (
+	maxRetryIndexAttempt = 5
+	safeBlockDistance    = 7
+)
 
 type ChainIndexer struct {
 	diskdb     ethdb.Database
@@ -31,7 +34,7 @@ type ChainIndexer struct {
 	replayer   *reexec.ChainReplayer
 
 	lastBlock *types.Block
-	indexData []*blockIndex
+	indexData []*blockIndexData
 
 	status  uint32
 	pauseCh chan bool
@@ -40,8 +43,8 @@ type ChainIndexer struct {
 }
 
 // processBlock re-executes every transactions in block and extracts neccessary info into indexdb
-func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, *blockIndex, error) {
-	data := newBlockIndex(idx.indexdb, block)
+func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, *blockIndexData, error) {
+	data := newBlockIndexData(idx.indexdb, block)
 	if idx.lastBlock.Root() == block.Root() {
 		return statedb, data, nil
 	}
@@ -53,84 +56,88 @@ func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB
 }
 
 func (idx *ChainIndexer) cleanUpAndStop() {
-	if len(idx.indexData) > 0 {
-		idx.commitIndexData(idx.indexData)
-	}
+	idx.commitIndexData()
 	close(idx.termCh)
 	atomic.SwapUint32(&idx.status, uint32(task.StatusStopped))
+	log.Info("Chain indexer stopped")
 }
 
-func (idx *ChainIndexer) commitIndexData(indexData []*blockIndex) {
+func (idx *ChainIndexer) commitIndexData() {
+	if len(idx.indexData) == 0 {
+		return
+	}
 	start := time.Now()
 	batch := idx.diskdb.NewBatch()
-	first := indexData[0].block.NumberU64()
-	last := indexData[len(indexData)-1].block.NumberU64()
+	first := idx.indexData[0].block.NumberU64()
+	last := idx.indexData[len(idx.indexData)-1].block.NumberU64()
 	numAccount := 0
-	for _, blockData := range indexData {
+	for _, blockData := range idx.indexData {
 		numAccount += len(blockData.dirtyAccounts)
 		blockData.Commit(batch, true)
 	}
 	extdb.WriteLastIndexBlock(idx.diskdb, idx.lastBlock.Hash())
 	if err := batch.Write(); err != nil {
-		log.Crit("Faield to commit index data", "range", []uint64{first, last}, "error", err)
+		log.Crit("Faield to commit index data", "blocks", len(idx.indexData), "segment", []uint64{first, last}, "error", err)
 	}
-	idx.indexData = make([]*blockIndex, 0)
+	numBlock := len(idx.indexData)
 	elapsed := time.Since(start)
 	dirty := common.StorageSize(batch.ValueSize())
-	log.Info("Persisted indexing data", "range", []uint64{first, last}, "accounts", numAccount, "dirty", dirty, "elapsed", elapsed)
+	idx.indexData = make([]*blockIndexData, 0)
+	log.Info("Persisted indexing data", "blocks", numBlock, "segment", []uint64{first, last}, "accounts", numAccount, "dirty", dirty, "elapsed", elapsed)
 }
 
 func (idx *ChainIndexer) indexingLoop() {
 	defer idx.cleanUpAndStop()
-	waitResume := func() {
-		for paused := range idx.pauseCh {
-			if !paused {
-				return
-			}
-		}
-	}
-	statedb, err := idx.replayer.StateAtBlock(idx.lastBlock)
-	if err != nil {
-		log.Error("Could not get historical state", "number", idx.lastBlock.NumberU64(), "root", idx.lastBlock.Root())
-		return
-	}
-	idx.indexData = make([]*blockIndex, 0)
+	idx.indexData = make([]*blockIndexData, 0)
 	proctime := time.Duration(0)
+	var (
+		statedb *state.StateDB
+		data    *blockIndexData
+		err     error
+		retry   int
+	)
 	for {
 		select {
-		case paused := <-idx.pauseCh:
-			if !paused {
-				waitResume()
-			}
 		case <-idx.quitCh:
 			return
 		default:
 		}
 		block := idx.blockchain.GetBlockByNumber(idx.lastBlock.NumberU64() + 1)
-		if block != nil {
-			log.Debug("Indexing block", "number", block.Number())
-			start := time.Now()
-			newstate, blockData, err := idx.processBlock(block, statedb)
-			if err != nil {
-				log.Error("Indexer could not process block", "number", block.NumberU64(), "error", err)
-				// retry process block
-				continue
-			}
-			elapsed := time.Since(start)
-			if elapsed > 100*time.Millisecond {
-				log.Error(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
-			}
-			statedb = newstate
-			idx.lastBlock = block
-			idx.indexData = append(idx.indexData, blockData)
-			proctime += time.Since(start)
-			if proctime > 10*time.Second {
-				idx.commitIndexData(idx.indexData)
-				proctime = 0
-			}
+		if block == nil {
+			// block is not available, wait a second
+			time.Sleep(time.Second)
 			continue
 		}
-		time.Sleep(time.Second)
+		log.Debug("Indexing block", "number", block.NumberU64())
+		if statedb == nil {
+			statedb, err = idx.replayer.StateAtBlock(idx.lastBlock)
+			if err != nil {
+				log.Error("Could not get historical state", "number", idx.lastBlock.NumberU64(), "root", idx.lastBlock.Root())
+				return
+			}
+		}
+		start := time.Now()
+		statedb, data, err = idx.processBlock(block, statedb)
+		if err != nil {
+			// retry indexing block
+			if retry += 1; retry < maxRetryIndexAttempt {
+				log.Warn(fmt.Sprintf("Indexer could not process block, retry indexing (%d)", retry), "number", block.NumberU64(), "error", err)
+				continue
+			}
+			log.Error("Indexer failed to process block", "number", block.NumberU64(), "error", err)
+			return
+		}
+		proctime += time.Since(start)
+		retry = 0
+		idx.lastBlock = block
+		idx.indexData = append(idx.indexData, data)
+		if proctime > 10*time.Second {
+			idx.commitIndexData()
+			proctime = 0
+		}
+		if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+			log.Error(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
+		}
 	}
 }
 
@@ -144,15 +151,14 @@ func (idx *ChainIndexer) Start() error {
 	if status != uint32(task.StatusPending) && status != uint32(task.StatusPaused) {
 		return nil
 	}
-	var lastBlock *types.Block
+
 	lastBlockHash := extdb.ReadLastIndexBlock(idx.diskdb)
 	if lastBlockHash == nilHash {
-		lastBlock = idx.blockchain.GetBlockByNumber(0)
+		idx.lastBlock = idx.blockchain.GetBlockByNumber(0)
 	} else {
-		lastBlock = idx.blockchain.GetBlockByHash(lastBlockHash)
+		idx.lastBlock = idx.blockchain.GetBlockByHash(lastBlockHash)
 	}
 
-	idx.lastBlock = lastBlock
 	if !atomic.CompareAndSwapUint32(&idx.status, status, uint32(task.StatusRunning)) {
 		return nil
 	}
@@ -165,26 +171,12 @@ func (idx *ChainIndexer) Wait() {
 	<-idx.termCh
 }
 
-func (idx *ChainIndexer) Pause() {
-	// Try to update the status from running to paused
-	if atomic.CompareAndSwapUint32(&idx.status, uint32(task.StatusRunning), uint32(task.StatusPaused)) {
-		idx.pauseCh <- true
-	}
-}
-
-func (idx *ChainIndexer) Resume() {
-	if atomic.CompareAndSwapUint32(&idx.status, uint32(task.StatusPaused), uint32(task.StatusRunning)) {
-		idx.pauseCh <- false
-	}
-}
-
 func (idx *ChainIndexer) Stop() {
 	if atomic.LoadUint32(&idx.status) != uint32(task.StatusRunning) {
 		return
 	}
 	close(idx.quitCh)
 	idx.Wait()
-	log.Info("ChainIndexer stopped")
 }
 
 func NewChainIndexer(diskdb ethdb.Database, stateCache state.Database, bc *core.BlockChain) (*ChainIndexer, error) {
