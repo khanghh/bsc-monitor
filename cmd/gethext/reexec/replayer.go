@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -25,9 +26,10 @@ import (
 )
 
 type ChainReplayer struct {
-	db        state.Database // isolated memory state cache for chain re-execution
-	bc        *core.BlockChain
-	maxReExec uint64
+	db            state.Database   // Isolated memory state cache for chain re-execution
+	bc            *core.BlockChain // Ethereum blockchain provide blocks to be replayed
+	triesInMemory []common.Hash    // Keep track of which tries that still alive in memory
+	maxReExec     uint64           // Max re-execution blocks to regenerate statedb
 }
 
 func (re *ChainReplayer) StateCache() state.Database {
@@ -36,6 +38,22 @@ func (re *ChainReplayer) StateCache() state.Database {
 
 func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
 	re.maxReExec = maxReExec
+}
+
+func (re *ChainReplayer) CapTrieDB(limit int) {
+	if len(re.triesInMemory) > limit {
+		capOffset := len(re.triesInMemory) - limit
+		toEvict := re.triesInMemory[0:capOffset]
+		re.triesInMemory = re.triesInMemory[capOffset:]
+		for _, root := range toEvict {
+			re.db.TrieDB().Dereference(root)
+		}
+	}
+}
+
+func (re *ChainReplayer) Reset() {
+	re.triesInMemory = make([]common.Hash, 0)
+	re.db.Purge()
 }
 
 // cacheSystemContracts caches account trie and storage trie of system contracts to live state cache.
@@ -118,11 +136,7 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 		if err != nil {
 			return nil, fmt.Errorf("commit state at block %d failed: %v", current.NumberU64(), err)
 		}
-		// keep new generated state alive and remove parent state root
-		re.db.TrieDB().Reference(root, common.Hash{})
-		if parent != (common.Hash{}) {
-			re.db.TrieDB().Dereference(parent)
-		}
+		re.triesInMemory = append(re.triesInMemory, root)
 		parent = root
 	}
 	nodes, imgs := re.db.TrieDB().Size()
@@ -210,9 +224,11 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	statedb.Finalise(re.bc.Config().IsEIP158(block.Number()))
 	statedb.AccountsIntermediateRoot()
 	// commit to cache the state to database
-	if _, _, err = statedb.Commit(nil); err != nil {
+	root, _, err := statedb.Commit(nil)
+	if err != nil {
 		return nil, fmt.Errorf("commit state for block %d failed: %v", block.NumberU64(), err)
 	}
+	re.triesInMemory = append(re.triesInMemory, root)
 	return statedb, nil
 }
 
@@ -245,10 +261,10 @@ func (re *ChainReplayer) ReplayTransaction(block *types.Block, txIndex uint64, h
 	return statedb, nil
 }
 
-func NewChainReplayer(db state.Database, bc *core.BlockChain, reexec uint64) *ChainReplayer {
+func NewChainReplayer(db state.Database, bc *core.BlockChain) *ChainReplayer {
 	return &ChainReplayer{
 		db:        db,
 		bc:        bc,
-		maxReExec: reexec,
+		maxReExec: math.MaxUint64,
 	}
 }
