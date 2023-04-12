@@ -8,7 +8,6 @@ package monitor
 
 import (
 	"fmt"
-	"math"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +25,7 @@ import (
 const (
 	maxRetryIndexAttempt = 5
 	safeBlockDistance    = 7
+	replayerMaxTrieAlive = 32
 )
 
 type ChainIndexer struct {
@@ -134,6 +134,7 @@ func (idx *ChainIndexer) indexingLoop() {
 		idx.indexData = append(idx.indexData, data)
 		if proctime > 10*time.Second {
 			idx.commitIndexData()
+			idx.replayer.CapTrieDB(replayerMaxTrieAlive)
 			proctime = 0
 		}
 		if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
@@ -185,7 +186,7 @@ func NewChainIndexer(diskdb ethdb.Database, stateCache state.Database, bc *core.
 		diskdb:     diskdb,
 		indexdb:    NewIndexDB(diskdb, stateCache),
 		blockchain: bc,
-		replayer:   reexec.NewChainReplayer(stateCache, bc, math.MaxUint64),
+		replayer:   reexec.NewChainReplayer(stateCache, bc),
 		pauseCh:    make(chan bool),
 		termCh:     make(chan struct{}),
 		quitCh:     make(chan struct{}),

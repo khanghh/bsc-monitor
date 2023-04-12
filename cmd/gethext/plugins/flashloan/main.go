@@ -53,7 +53,7 @@ func (h *callHook) OnCallExit(ctx *reexec.CallCtx) {
 func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	bc := ctx.Eth.Chain()
 	db := state.NewDatabaseWithConfigAndCache(ctx.Eth.ChainDb(), &trie.Config{Cache: 16})
-	replayer := reexec.NewChainReplayer(db, bc, 100000)
+	replayer := reexec.NewChainReplayer(db, bc)
 	hook := &callHook{}
 	start := time.Now()
 	var (
