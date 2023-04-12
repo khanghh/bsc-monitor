@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// blockIndex hold data collected during indexing for the given state root
-type blockIndex struct {
+// blockIndexData hold data collected during indexing for the given state root
+type blockIndexData struct {
 	indexdb *IndexDB
 	block   *types.Block
 
@@ -26,7 +26,7 @@ type blockIndex struct {
 	dirtyAccounts map[common.Address]*AccountDetail
 }
 
-func (s *blockIndex) DirtyAccounts() []common.Address {
+func (s *blockIndexData) DirtyAccounts() []common.Address {
 	accounts := make([]common.Address, 0, len(s.dirtyAccounts))
 	for account := range s.dirtyAccounts {
 		accounts = append(accounts, account)
@@ -35,7 +35,7 @@ func (s *blockIndex) DirtyAccounts() []common.Address {
 }
 
 // AccountDetail retrieves account info and contract info of the given address
-func (s *blockIndex) AccountDetail(addr common.Address) *AccountDetail {
+func (s *blockIndexData) AccountDetail(addr common.Address) *AccountDetail {
 	if acc, exist := s.dirtyAccounts[addr]; exist {
 		return acc
 	}
@@ -48,7 +48,7 @@ func (s *blockIndex) AccountDetail(addr common.Address) *AccountDetail {
 }
 
 // AccountChangeSet create object to hold update data of account extracted from this block
-func (s *blockIndex) AccountChangeSet(addr common.Address) *AccountIndexData {
+func (s *blockIndexData) AccountChangeSet(addr common.Address) *AccountIndexData {
 	if changeSet, exist := s.dirtyChanges[addr]; exist {
 		return changeSet
 	}
@@ -56,19 +56,19 @@ func (s *blockIndex) AccountChangeSet(addr common.Address) *AccountIndexData {
 	return s.dirtyChanges[addr]
 }
 
-func (s *blockIndex) SetAccountDetail(detail *AccountDetail) {
+func (s *blockIndexData) SetAccountDetail(detail *AccountDetail) {
 	s.dirtyAccounts[detail.Address] = detail
 }
 
-func (s *blockIndex) SetAccountInfo(addr common.Address, info *AccountInfo) {
+func (s *blockIndexData) SetAccountInfo(addr common.Address, info *AccountInfo) {
 	s.AccountDetail(addr).AccountInfo = info
 }
 
-func (s *blockIndex) SetContractInfo(addr common.Address, info *ContractInfo) {
+func (s *blockIndexData) SetContractInfo(addr common.Address, info *ContractInfo) {
 	s.AccountDetail(addr).ContractInfo = info
 }
 
-func (s *blockIndex) commitStates(batch ethdb.Batch) error {
+func (s *blockIndexData) commitStates(batch ethdb.Batch) error {
 	if len(s.dirtyStates) == 0 {
 		return nil
 	}
@@ -86,7 +86,7 @@ func (s *blockIndex) commitStates(batch ethdb.Batch) error {
 	return tr.Commit(batch)
 }
 
-func (s *blockIndex) commitChanges(batch ethdb.Batch, withState bool) error {
+func (s *blockIndexData) commitChanges(batch ethdb.Batch, withState bool) error {
 	for addr, changeSet := range s.dirtyChanges {
 		state := new(AccountIndexState)
 		for idx, txHash := range changeSet.SentTxs {
@@ -121,7 +121,7 @@ func (s *blockIndex) commitChanges(batch ethdb.Batch, withState bool) error {
 	return nil
 }
 
-func (s *blockIndex) commitAccounts(batch ethdb.Batch) error {
+func (s *blockIndexData) commitAccounts(batch ethdb.Batch) error {
 	for addr, acc := range s.dirtyAccounts {
 		if !isEmptyAccountInfo(acc.AccountInfo) {
 			enc, _ := rlp.EncodeToBytes(acc.AccountInfo)
@@ -137,7 +137,7 @@ func (s *blockIndex) commitAccounts(batch ethdb.Batch) error {
 }
 
 // Commit write data collected of this block to the given writer
-func (s *blockIndex) Commit(batch ethdb.Batch, withState bool) error {
+func (s *blockIndexData) Commit(batch ethdb.Batch, withState bool) error {
 	// write account info
 	if err := s.commitAccounts(batch); err != nil {
 		return err
@@ -149,8 +149,8 @@ func (s *blockIndex) Commit(batch ethdb.Batch, withState bool) error {
 	return nil
 }
 
-func newBlockIndex(indexdb *IndexDB, block *types.Block) *blockIndex {
-	return &blockIndex{
+func newBlockIndexData(indexdb *IndexDB, block *types.Block) *blockIndexData {
+	return &blockIndexData{
 		indexdb:       indexdb,
 		block:         block,
 		dirtyStates:   make(map[common.Address]*AccountIndexState),

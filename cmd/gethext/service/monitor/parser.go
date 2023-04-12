@@ -31,7 +31,7 @@ func NewContractDetector(abiDir string) *ContractParser {
 }
 
 type blockTxParser struct {
-	data   *blockIndex
+	data   *blockIndexData
 	txAccs []AccountDetail // contracts created by the transaction
 }
 
@@ -77,6 +77,6 @@ func (p *blockTxParser) OnCallExit(ctx *reexec.CallCtx) {
 	}
 }
 
-func newBlockParser(data *blockIndex) *blockTxParser {
+func newBlockParser(data *blockIndexData) *blockTxParser {
 	return &blockTxParser{data: data}
 }
