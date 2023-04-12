@@ -136,7 +136,7 @@ func (idx *ChainIndexer) indexingLoop() {
 			proctime = 0
 		}
 		if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-			log.Error(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
+			log.Warn(fmt.Sprintf("Indexing block %d tooks %v", block.NumberU64(), elapsed))
 		}
 	}
 }
