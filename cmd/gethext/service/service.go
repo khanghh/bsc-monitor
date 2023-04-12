@@ -104,7 +104,7 @@ func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Et
 		return nil, err
 	}
 
-	stateCache := state.NewDatabaseWithConfigAndCache(eth.ChainDb(), &trie.Config{Cache: 1024})
+	stateCache := state.NewDatabaseWithConfigAndCache(eth.ChainDb(), &trie.Config{Cache: 16})
 	chainIndexer, err := monitor.NewChainIndexer(diskdb, stateCache, eth.BlockChain())
 	if err != nil {
 		return nil, err
