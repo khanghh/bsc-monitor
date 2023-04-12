@@ -46,14 +46,14 @@ func (p *blockTxParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
 	if ctx.Transaction.Nonce() == 0 {
 		accInfo := AccountInfo{FirstTx: txHash}
 		p.data.SetAccountInfo(ctx.Message.From(), &accInfo)
-		log.Warn(fmt.Sprintf("Add new account %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
+		log.Info(fmt.Sprintf("Add new account %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
 	}
 	if ctx.Reverted {
 		return
 	}
 	for _, acc := range p.txAccs {
 		p.data.SetAccountDetail(&acc)
-		log.Warn(fmt.Sprintf("Add new contract %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
+		log.Info(fmt.Sprintf("Add new contract %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
 	}
 }
 
@@ -65,9 +65,6 @@ func (p *blockTxParser) OnCallExit(ctx *reexec.CallCtx) {
 		return
 	}
 	if ctx.Type == vm.CREATE || ctx.Type == vm.CREATE2 {
-		if ctx.Type == vm.CREATE2 {
-			log.Warn("Detected CREATE2 contract", "addr", ctx.To, "creator", ctx.From)
-		}
 		p.data.SetContractInfo(ctx.To, &ContractInfo{Creator: ctx.From})
 		p.txAccs = append(p.txAccs, AccountDetail{
 			Address:      ctx.To,
