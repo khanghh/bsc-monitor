@@ -127,14 +127,14 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 		}
 		statedb, _, _, _, err = re.bc.Processor().Process(current, statedb, vm.Config{})
 		if err != nil {
-			return nil, fmt.Errorf("processing block %d failed: %v", current.NumberU64(), err)
+			return nil, err
 		}
 		statedb.SetExpectedStateRoot(current.Root())
 		statedb.Finalise(re.bc.Config().IsEIP158(current.Number()))
 		statedb.AccountsIntermediateRoot()
 		root, _, err := statedb.Commit(nil)
 		if err != nil {
-			return nil, fmt.Errorf("commit state at block %d failed: %v", current.NumberU64(), err)
+			return nil, fmt.Errorf("commit state failed: %v", err)
 		}
 		re.triesInMemory = append(re.triesInMemory, root)
 		parent = root
@@ -218,7 +218,7 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	tracer := NewCallTracerWithHook(block, signer, hook)
 	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
-		return nil, fmt.Errorf("replay block %d failed: %v", block.NumberU64(), err)
+		return nil, err
 	}
 	statedb.SetExpectedStateRoot(block.Root())
 	statedb.Finalise(re.bc.Config().IsEIP158(block.Number()))
@@ -226,7 +226,7 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	// commit to cache the state to database
 	root, _, err := statedb.Commit(nil)
 	if err != nil {
-		return nil, fmt.Errorf("commit state for block %d failed: %v", block.NumberU64(), err)
+		return nil, fmt.Errorf("commit state failed: %v", err)
 	}
 	re.triesInMemory = append(re.triesInMemory, root)
 	return statedb, nil
