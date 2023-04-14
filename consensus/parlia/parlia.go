@@ -208,7 +208,7 @@ type Parlia struct {
 
 	lock sync.RWMutex // Protects the signer fields
 
-	ethAPI          *ethapi.PublicBlockChainAPI
+	ethAPI          ethapi.Backend
 	validatorSetABI abi.ABI
 	slashABI        abi.ABI
 
@@ -220,7 +220,7 @@ type Parlia struct {
 func New(
 	chainConfig *params.ChainConfig,
 	db ethdb.Database,
-	ethAPI *ethapi.PublicBlockChainAPI,
+	ethAPI ethapi.Backend,
 	genesisHash common.Hash,
 ) *Parlia {
 	// get parlia config
@@ -447,7 +447,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 		// If an on-disk checkpoint snapshot can be found, use that
 		if number%checkpointInterval == 0 {
-			if s, err := loadSnapshot(p.config, p.signatures, p.db, hash, p.ethAPI); err == nil {
+			if s, err := loadSnapshot(p.config, p.signatures, p.db, hash); err == nil {
 				log.Trace("Loaded snapshot from disk", "number", number, "hash", hash)
 				snap = s
 				break
@@ -472,7 +472,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				}
 
 				// new snap shot
-				snap = newSnapshot(p.config, p.signatures, number, hash, validators, p.ethAPI)
+				snap = newSnapshot(p.config, p.signatures, number, hash, validators)
 				if err := snap.store(p.db); err != nil {
 					return nil, err
 				}
@@ -617,9 +617,16 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
 	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, number)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
-
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
 	if number%p.config.Epoch == 0 {
-		newValidators, err := p.getCurrentValidators(header.ParentHash, new(big.Int).Sub(header.Number, common.Big1))
+		state, err := p.ethAPI.Chain().StateAt(parent.Root)
+		if err != nil {
+			return err
+		}
+		newValidators, err := p.getCurrentValidators(state, parent)
 		if err != nil {
 			return err
 		}
@@ -637,10 +644,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	header.MixDigest = common.Hash{}
 
 	// Ensure the timestamp has the correct delay
-	parent := chain.GetHeader(header.ParentHash, number-1)
-	if parent == nil {
-		return consensus.ErrUnknownAncestor
-	}
 	header.Time = p.blockTimeForRamanujanFork(snap, header, parent)
 	if header.Time < uint64(time.Now().Unix()) {
 		header.Time = uint64(time.Now().Unix())
@@ -650,7 +653,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs *[]*types.Transaction,
+func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, statedb *state.StateDB, txs *[]*types.Transaction,
 	uncles []*types.Header, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64) error {
 	// warn if not in majority fork
 	number := header.Number.Uint64()
@@ -665,7 +668,15 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// If the block is a epoch end block, verify the validator list
 	// The verification can only be done when the state is ready, it can't be done in VerifyHeader.
 	if header.Number.Uint64()%p.config.Epoch == 0 {
-		newValidators, err := p.getCurrentValidators(header.ParentHash, new(big.Int).Sub(header.Number, common.Big1))
+		parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+		if parent == nil {
+			return consensus.ErrUnknownAncestor
+		}
+		state, err := state.New(parent.Root, statedb.Database(), nil)
+		if err != nil {
+			return err
+		}
+		newValidators, err := p.getCurrentValidators(state, parent)
 		if err != nil {
 			return err
 		}
@@ -686,7 +697,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false)
+		err := p.initContract(statedb, header, cx, txs, receipts, systemTxs, usedGas, false)
 		if err != nil {
 			log.Error("init contract failed")
 		}
@@ -702,7 +713,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 		if !signedRecently {
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
-			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false)
+			err = p.slash(spoiledVal, statedb, header, cx, txs, receipts, systemTxs, usedGas, false)
 			if err != nil {
 				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
@@ -710,7 +721,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	val := header.Coinbase
-	err = p.distributeIncoming(val, state, header, cx, txs, receipts, systemTxs, usedGas, false)
+	err = p.distributeIncoming(val, statedb, header, cx, txs, receipts, systemTxs, usedGas, false)
 	if err != nil {
 		return err
 	}
@@ -1014,13 +1025,10 @@ func (p *Parlia) Close() error {
 // ==========================  interaction with contract/account =========
 
 // getCurrentValidators get current validators
-func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNumber *big.Int) ([]common.Address, error) {
-	// block
-	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
-
+func (p *Parlia) getCurrentValidators(state *state.StateDB, header *types.Header) ([]common.Address, error) {
 	// method
 	method := "getValidators"
-	if p.chainConfig.IsEuler(blockNumber) {
+	if p.chainConfig.IsEuler(header.Number) {
 		method = "getMiningValidators"
 	}
 
@@ -1036,30 +1044,24 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNumber *big.In
 	msgData := (hexutil.Bytes)(data)
 	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-	result, err := p.ethAPI.Call(ctx, ethapi.TransactionArgs{
+	result, err := p.doCall(ctx, state, header, ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
-	}, blockNr, nil)
+	})
 	if err != nil {
 		return nil, err
 	}
+	if result.Err != nil {
+		log.Error("Call ValidatorContract failed", "method", method, "error", err)
+		return nil, result.Err
+	}
 
-	var (
-		ret0 = new([]common.Address)
-	)
-	out := ret0
-
-	if err := p.validatorSetABI.UnpackIntoInterface(out, method, result); err != nil {
+	ret := []common.Address{}
+	if err := p.validatorSetABI.UnpackIntoInterface(&ret, method, result.Return()); err != nil {
 		return nil, err
 	}
-
-	valz := make([]common.Address, len(*ret0))
-	// nolint: gosimple
-	for i, a := range *ret0 {
-		valz[i] = a
-	}
-	return valz, nil
+	return ret, nil
 }
 
 // slash spoiled validators

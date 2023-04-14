@@ -245,9 +245,9 @@ type Config struct {
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
-func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, ee *ethapi.PublicBlockChainAPI, genesisHash common.Hash) consensus.Engine {
+func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database, ethAPI ethapi.Backend, genesisHash common.Hash) consensus.Engine {
 	if chainConfig.Parlia != nil {
-		return parlia.New(chainConfig, db, ee, genesisHash)
+		return parlia.New(chainConfig, db, ethAPI, genesisHash)
 	}
 	// If proof-of-authority is requested, set it up
 	var engine consensus.Engine
