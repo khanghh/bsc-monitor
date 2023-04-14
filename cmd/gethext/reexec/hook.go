@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"math/big"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -54,8 +53,8 @@ func (t *CallTracerWithHook) CaptureStart(env *vm.EVM, from common.Address, to c
 	}
 }
 
-func (t *CallTracerWithHook) CaptureEnd(output []byte, gasUsed uint64, d time.Duration, err error) {
-	t.handler.CaptureEnd(output, gasUsed, d, err)
+func (t *CallTracerWithHook) CaptureEnd(output []byte, gasUsed uint64, err error) {
+	t.handler.CaptureEnd(output, gasUsed, err)
 	if err != nil {
 		t.txContext.Reverted = true
 	}
