@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
