@@ -17,10 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -55,22 +53,6 @@ func (re *ChainReplayer) CapTrieDB(limit int) {
 func (re *ChainReplayer) Reset() {
 	re.triesInMemory = make([]common.Hash, 0)
 	re.db.Purge()
-}
-
-// cacheSystemContracts caches account trie and storage trie of system contracts to live state cache.
-// Parlia use live database to call system contracts, when replay transactions old state has been dereferenced,
-// we must copy them to the live database `re.bc.StateCache()`
-func (re *ChainReplayer) cacheSystemContracts(root common.Hash, statedb *state.StateDB) {
-	contractAddr := common.HexToAddress(systemcontracts.ValidatorContract)
-	addrHash := crypto.Keccak256Hash(contractAddr[:])
-	str := statedb.StorageTrie(contractAddr)
-	if _, err := re.bc.StateCache().OpenStorageTrie(addrHash, str.Hash()); err == nil {
-		return
-	}
-	log.Debug("Caching system contracts state for replaying", "root", root)
-	tr, _ := statedb.Trie()
-	re.bc.StateCache().CacheAccount(root, tr)
-	re.bc.StateCache().CacheStorage(addrHash, str.Hash(), str)
 }
 
 // StateAtBlock returns statedb after all transactions in block was executed
@@ -109,7 +91,6 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 	var (
 		start  = time.Now()
 		logged time.Time
-		parent common.Hash // keep track of parent state root
 	)
 	blockNum := block.NumberU64()
 	for current.NumberU64() < blockNum {
@@ -120,11 +101,6 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 		next := current.NumberU64() + 1
 		if current = re.bc.GetBlockByNumber(next); current == nil {
 			return nil, fmt.Errorf("block #%d not found", next)
-		}
-		// Replayer use its own state.Database to cache tries and isolated with the live one. This cause the parlia engine
-		// failed to load state of the system contracts at epoch block, we need to cache their generated states into the live database
-		if current.NumberU64()%200 == 0 {
-			re.cacheSystemContracts(parent, statedb)
 		}
 		statedb, _, _, _, err = re.processor.Process(current, statedb, vm.Config{})
 		if err != nil {
@@ -138,7 +114,6 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 			return nil, fmt.Errorf("commit state failed: %v", err)
 		}
 		re.triesInMemory = append(re.triesInMemory, root)
-		parent = root
 	}
 	nodes, imgs := re.db.TrieDB().Size()
 	log.Info("Historical state regenerated", "block", current.NumberU64(), "elapsed", time.Since(start), "nodes", nodes, "preimages", imgs)
@@ -211,9 +186,6 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 		if err != nil {
 			return nil, fmt.Errorf("missing base state: %v", err)
 		}
-	}
-	if block.NumberU64()%200 == 0 {
-		re.cacheSystemContracts(base.StateIntermediateRoot(), base)
 	}
 	signer := types.MakeSigner(re.bc.Config(), block.Number())
 	tracer := NewCallTracerWithHook(block, signer, hook)
