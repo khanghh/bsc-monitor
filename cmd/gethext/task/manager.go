@@ -125,10 +125,7 @@ func (tm *TaskManager) Stop() {
 	log.Info("TaskManager stopped")
 }
 
-func NewTaskManager(cfg *Config) (*TaskManager, error) {
-	if err := cfg.Sanitize(); err != nil {
-		return nil, err
-	}
+func NewTaskManager() (*TaskManager, error) {
 	return &TaskManager{
 		tasks:  make(map[string]Task),
 		quitCh: make(chan struct{}),

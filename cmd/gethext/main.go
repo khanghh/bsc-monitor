@@ -28,7 +28,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/console/prompt"
@@ -340,17 +339,17 @@ func geth(ctx *cli.Context) error {
 	stack, ethereum := makeFullNode(ctx, cfg)
 	defer stack.Close()
 
-	serviceCfg := &service.MonitorServiceOptions{
+	serviceCfg := &EthExplorerConfig{
 		MonitorConfig: &cfg.Monitor,
 		PluginDir:     resolvePluginDir(ctx.GlobalString(pluginDirFlag.Name)),
 		NoIndexing:    ctx.GlobalBool(noIndexFlag.Name),
 	}
-	instance, err := service.NewMonitorService(serviceCfg, stack, ethereum)
+	ethexplorer, err := NewExplorerService(serviceCfg, stack, ethereum)
 	if err != nil {
 		utils.Fatalf("Could not initialize chain monitor service")
 	}
-	stack.RegisterAPIs(instance.APIs())
-	stack.RegisterLifecycle(instance)
+	stack.RegisterAPIs(ethexplorer.APIs())
+	stack.RegisterLifecycle(ethexplorer)
 	startNode(ctx, stack, ethereum.APIBackend, false)
 	stack.Wait()
 	return nil
