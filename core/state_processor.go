@@ -56,7 +56,6 @@ type StateProcessor struct {
 	config *params.ChainConfig // Chain configuration options
 	bc     *BlockChain         // Canonical block chain
 	engine consensus.Engine    // Consensus engine used for block rewards
-	mtx    sync.Mutex
 }
 
 // NewStateProcessor initialises a new StateProcessor.
@@ -379,8 +378,6 @@ func (p *LightStateProcessor) LightProcess(diffLayer *types.DiffLayer, block *ty
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
 func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*state.StateDB, types.Receipts, []*types.Log, uint64, error) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
 	var (
 		usedGas     = new(uint64)
 		header      = block.Header()
