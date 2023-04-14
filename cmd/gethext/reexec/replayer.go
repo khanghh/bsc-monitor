@@ -26,7 +26,6 @@ import (
 type ChainReplayer struct {
 	db            state.Database   // Isolated memory state cache for chain re-execution
 	bc            *core.BlockChain // Ethereum blockchain provide blocks to be replayed
-	processor     core.Processor   // State processor to process the replaying block
 	triesInMemory []common.Hash    // Keep track of which tries that still alive in memory
 	maxReExec     uint64           // Max re-execution blocks to regenerate statedb
 }
@@ -102,7 +101,7 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 		if current = re.bc.GetBlockByNumber(next); current == nil {
 			return nil, fmt.Errorf("block #%d not found", next)
 		}
-		statedb, _, _, _, err = re.processor.Process(current, statedb, vm.Config{})
+		statedb, _, _, _, err = re.bc.Processor().Process(current, statedb, vm.Config{})
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +188,7 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 	}
 	signer := types.MakeSigner(re.bc.Config(), block.Number())
 	tracer := NewCallTracerWithHook(block, signer, hook)
-	statedb, _, _, _, err := re.processor.Process(block, base, vm.Config{Debug: true, Tracer: tracer})
+	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
 		return nil, err
 	}

@@ -4,14 +4,14 @@
 // Copyright (c) 2023 Verichains Lab
 //
 
-package service
+package main
 
 import (
 	"sync"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/monitor"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
+	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
+	"github.com/ethereum/go-ethereum/cmd/gethext/task"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
@@ -21,22 +21,21 @@ import (
 )
 
 const (
-	monitorNamespace      = "/eth/db/monitor"
-	monitorDatabaseName   = "monitor"
-	monitorDatabaseHandle = 512
-	monitorDatabaseCache  = 1024
-	indexerTaskName       = "indexer"
+	extNamespace      = "/eth/db/ethexplorer"
+	extDatabaseName   = "ethexplorer"
+	extDatabaseHandle = 512
+	extDatabaseCache  = 1024
+	indexerTaskName   = "indexer"
 )
 
-type MonitorServiceOptions struct {
+type EthExplorerConfig struct {
 	MonitorConfig *monitor.Config
-	ReExecConfig  *task.Config
 	PluginDir     string
 	NoIndexing    bool
 }
 
-type MonitorService struct {
-	opts          *MonitorServiceOptions
+type EthExplorer struct {
+	opts          *EthExplorerConfig
 	chainMonitor  *monitor.ChainMonitor
 	chainIndexer  *monitor.ChainIndexer
 	pluginManager *plugin.PluginManager
@@ -46,7 +45,7 @@ type MonitorService struct {
 	quitLock sync.Mutex
 }
 
-func (s *MonitorService) Start() error {
+func (s *EthExplorer) Start() error {
 	log.Info("Starting chain monitor service")
 	if err := s.pluginManager.LoadPlugins(); err != nil {
 		log.Error("Could not load plugins", "error", err)
@@ -65,7 +64,7 @@ func (s *MonitorService) Start() error {
 	return nil
 }
 
-func (s *MonitorService) Stop() error {
+func (s *EthExplorer) Stop() error {
 	log.Info("Stopping monitor service...")
 	s.quitLock.Lock()
 	select {
@@ -82,7 +81,7 @@ func (s *MonitorService) Stop() error {
 	return nil
 }
 
-func (s *MonitorService) APIs() []rpc.API {
+func (s *EthExplorer) APIs() []rpc.API {
 	return []rpc.API{
 		{
 			Namespace: "idx",
@@ -93,9 +92,9 @@ func (s *MonitorService) APIs() []rpc.API {
 	}
 }
 
-func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Ethereum) (*MonitorService, error) {
-	diskdb, err := node.OpenDatabaseWithFreezer(monitorDatabaseName, monitorDatabaseCache, monitorDatabaseHandle, "",
-		monitorNamespace, false, false, false, false, true)
+func NewExplorerService(opts *EthExplorerConfig, node *node.Node, eth *eth.Ethereum) (*EthExplorer, error) {
+	diskdb, err := node.OpenDatabaseWithFreezer(extDatabaseName, extDatabaseCache, extDatabaseHandle, "",
+		extNamespace, false, false, false, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +109,7 @@ func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Et
 		return nil, err
 	}
 
-	taskManager, err := task.NewTaskManager(opts.ReExecConfig)
+	taskManager, err := task.NewTaskManager()
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +119,7 @@ func NewMonitorService(opts *MonitorServiceOptions, node *node.Node, eth *eth.Et
 		return nil, err
 	}
 
-	instance := &MonitorService{
+	instance := &EthExplorer{
 		opts:          opts,
 		chainMonitor:  chainMonitor,
 		chainIndexer:  chainIndexer,

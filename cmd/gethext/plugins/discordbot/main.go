@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/plugin"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/log"
 )
 
