@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
-	"github.com/ethereum/go-ethereum/cmd/gethext/service/task"
+	"github.com/ethereum/go-ethereum/cmd/gethext/task"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"

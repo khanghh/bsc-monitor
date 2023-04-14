@@ -20,6 +20,7 @@ var (
 type Config struct {
 	ProcessQueue int
 	ProcessSlot  int
+	ABIDir       string
 }
 
 func (cfg *Config) Sanitize() error {

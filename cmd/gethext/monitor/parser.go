@@ -30,17 +30,17 @@ func NewContractDetector(abiDir string) *ContractParser {
 	}
 }
 
-type blockTxParser struct {
+type blockParser struct {
 	data   *blockIndexData
-	txAccs []AccountDetail // contracts created by the transaction
+	txAccs []AccountDetail // contracts created after transaction finished
 }
 
-func (p *blockTxParser) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
+func (p *blockParser) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
 	// fmt.Printf("tx: %#v\n", ctx.Transaction.Hash())
 	p.txAccs = make([]AccountDetail, 0)
 }
 
-func (p *blockTxParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
+func (p *blockParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
 	txHash := ctx.Transaction.Hash()
 	defer p.data.AccountChangeSet(ctx.Message.From()).AddSentTx(txHash)
 	if ctx.Transaction.Nonce() == 0 {
@@ -57,10 +57,10 @@ func (p *blockTxParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
 	}
 }
 
-func (p *blockTxParser) OnCallEnter(ctx *reexec.CallCtx) {
+func (p *blockParser) OnCallEnter(ctx *reexec.CallCtx) {
 }
 
-func (p *blockTxParser) OnCallExit(ctx *reexec.CallCtx) {
+func (p *blockParser) OnCallExit(ctx *reexec.CallCtx) {
 	if ctx.Error == nil {
 		return
 	}
@@ -74,6 +74,6 @@ func (p *blockTxParser) OnCallExit(ctx *reexec.CallCtx) {
 	}
 }
 
-func newBlockParser(data *blockIndexData) *blockTxParser {
-	return &blockTxParser{data: data}
+func newBlockParser(data *blockIndexData) *blockParser {
+	return &blockParser{data: data}
 }
