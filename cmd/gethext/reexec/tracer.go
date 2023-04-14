@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -72,7 +71,7 @@ func (t *callTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Ad
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-func (t *callTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
+func (t *callTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 	t.callstack[0].GasUsed = gasUsed
 	if err != nil {
 		t.callstack[0].Error = err

@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -38,8 +37,7 @@ import (
 // Snapshot is the state of the validatorSet at a given point.
 type Snapshot struct {
 	config   *params.ParliaConfig // Consensus engine parameters to fine tune behavior
-	ethAPI   *ethapi.PublicBlockChainAPI
-	sigCache *lru.ARCCache // Cache of recent block signatures to speed up ecrecover
+	sigCache *lru.ARCCache        // Cache of recent block signatures to speed up ecrecover
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
@@ -64,11 +62,9 @@ func newSnapshot(
 	hash common.Hash,
 	validators []common.Address,
 	voteAddrs []types.BLSPublicKey,
-	ethAPI *ethapi.PublicBlockChainAPI,
 ) *Snapshot {
 	snap := &Snapshot{
 		config:           config,
-		ethAPI:           ethAPI,
 		sigCache:         sigCache,
 		Number:           number,
 		Hash:             hash,
@@ -105,7 +101,7 @@ func (s validatorsAscending) Less(i, j int) bool { return bytes.Compare(s[i][:],
 func (s validatorsAscending) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // loadSnapshot loads an existing snapshot from the database.
-func loadSnapshot(config *params.ParliaConfig, sigCache *lru.ARCCache, db ethdb.Database, hash common.Hash, ethAPI *ethapi.PublicBlockChainAPI) (*Snapshot, error) {
+func loadSnapshot(config *params.ParliaConfig, sigCache *lru.ARCCache, db ethdb.Database, hash common.Hash) (*Snapshot, error) {
 	blob, err := db.Get(append([]byte("parlia-"), hash[:]...))
 	if err != nil {
 		return nil, err
@@ -116,7 +112,6 @@ func loadSnapshot(config *params.ParliaConfig, sigCache *lru.ARCCache, db ethdb.
 	}
 	snap.config = config
 	snap.sigCache = sigCache
-	snap.ethAPI = ethAPI
 
 	return snap, nil
 }
@@ -134,7 +129,6 @@ func (s *Snapshot) store(db ethdb.Database) error {
 func (s *Snapshot) copy() *Snapshot {
 	cpy := &Snapshot{
 		config:           s.config,
-		ethAPI:           s.ethAPI,
 		sigCache:         s.sigCache,
 		Number:           s.Number,
 		Hash:             s.Hash,
