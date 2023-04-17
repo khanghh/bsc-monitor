@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"plugin"
 	"runtime"
@@ -22,10 +21,10 @@ import (
 )
 
 const (
-	pluginConfigFile = "config.toml"
-	pluginOnLoadFunc = "OnLoad"
-	pluginExtLinux   = ".so"
-	pluginExtDarwin  = ".dylib"
+	pluginConfigPrefix = "Plugins"
+	pluginOnLoadFunc   = "OnLoad"
+	pluginExtLinux     = ".so"
+	pluginExtDarwin    = ".dylib"
 )
 
 var (
@@ -48,7 +47,7 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	pluginDir   string
+	pluginsDir  string
 	configStore *configStore
 	plugins     map[string]loadedPlugin
 	ctx         *sharedCtx
@@ -72,9 +71,6 @@ func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
 			LoadConfig: func(cfg interface{}) error {
 				return m.configStore.loadConfig(plname, cfg)
 			},
-			SaveConfig: func(cfg interface{}) error {
-				return m.configStore.saveConfig(plname, cfg)
-			},
 		}
 		plinstance := plOnload(plctx)
 		loaded := loadedPlugin{
@@ -90,17 +86,17 @@ func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
 }
 
 func (m *PluginManager) LoadPlugins() error {
-	if _, err := os.Stat(m.pluginDir); os.IsNotExist(err) {
+	if _, err := os.Stat(m.pluginsDir); os.IsNotExist(err) {
 		return err
 	}
-	files, err := os.ReadDir(m.pluginDir)
+	files, err := os.ReadDir(m.pluginsDir)
 	if err != nil {
 		return err
 	}
 	loaded := []string{}
 	for _, entry := range files {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), pluginExt) {
-			fullpath := filepath.Join(m.pluginDir, entry.Name())
+			fullpath := filepath.Join(m.pluginsDir, entry.Name())
 			pl, err := m.loadPlugin(fullpath)
 			if err != nil {
 				log.Error("Error occur when load plugin", "plugin", entry.Name(), "error", err)
@@ -153,10 +149,10 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(pluginDir string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
+func NewPluginManager(pluginsDir string, configFile string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	backend := &PluginManager{
-		pluginDir:   pluginDir,
-		configStore: NewConfigStore(path.Join(pluginDir, pluginConfigFile)),
+		pluginsDir:  pluginsDir,
+		configStore: NewConfigStore(pluginConfigPrefix, configFile),
 		plugins:     make(map[string]loadedPlugin),
 		ctx: &sharedCtx{
 			Node:    node,
