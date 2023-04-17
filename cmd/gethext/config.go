@@ -88,9 +88,10 @@ type ethstatsConfig struct {
 type gethConfig struct {
 	Eth      ethconfig.Config
 	Node     node.Config
-	Monitor  monitor.Config
 	Ethstats ethstatsConfig
 	Metrics  metrics.Config
+	Monitor  monitor.MonitorConfig
+	Indexer  monitor.IndexerConfig
 }
 
 func defaultNodeConfig() node.Config {
@@ -124,8 +125,9 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 	cfg := &gethConfig{
 		Eth:     ethconfig.Defaults,
 		Node:    defaultNodeConfig(),
-		Monitor: monitor.DefaultConfig,
 		Metrics: metrics.DefaultConfig,
+		Monitor: monitor.DefaultMonitorConfig,
+		Indexer: monitor.DefaultIndexerConfig,
 	}
 
 	// Load config file.
@@ -135,6 +137,13 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 		}
 	}
 
+	// Override config with command line flags
+	if ctx.IsSet(monitorEnableFlag.Name) {
+		cfg.Monitor.Enabled = ctx.GlobalBool(monitorEnableFlag.Name)
+	}
+	if ctx.IsSet(indexerEnableFlag.Name) {
+		cfg.Indexer.Enabled = ctx.GlobalBool(indexerEnableFlag.Name)
+	}
 	return cfg
 }
 

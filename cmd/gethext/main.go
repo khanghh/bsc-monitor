@@ -216,8 +216,9 @@ var (
 	}
 
 	monitorFlags = []cli.Flag{
-		pluginDirFlag,
-		noIndexFlag,
+		pluginsDirFlag,
+		monitorEnableFlag,
+		indexerEnableFlag,
 	}
 )
 
@@ -312,7 +313,7 @@ func prepare(ctx *cli.Context) {
 	}
 }
 
-func resolvePluginDir(pluginDir string) string {
+func resolvePluginsDir(pluginDir string) string {
 	if strings.HasPrefix(pluginDir, "/") {
 		return pluginDir
 	}
@@ -340,9 +341,10 @@ func geth(ctx *cli.Context) error {
 	defer stack.Close()
 
 	serviceCfg := &EthExplorerConfig{
-		MonitorConfig: &cfg.Monitor,
-		PluginDir:     resolvePluginDir(ctx.GlobalString(pluginDirFlag.Name)),
-		NoIndexing:    ctx.GlobalBool(noIndexFlag.Name),
+		// ConfigFile: ctx.
+		Monitor:    &cfg.Monitor,
+		Indexer:    &cfg.Indexer,
+		PluginsDir: resolvePluginsDir(ctx.GlobalString(pluginsDirFlag.Name)),
 	}
 	ethexplorer, err := NewExplorerService(serviceCfg, stack, ethereum)
 	if err != nil {

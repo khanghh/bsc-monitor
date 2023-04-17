@@ -25,7 +25,7 @@ type Processor interface {
 // ChainMonitor calls registed processors to process every pending
 // transactions recieved in txpool
 type ChainMonitor struct {
-	config *Config
+	config *MonitorConfig
 	eth    *eth.Ethereum
 
 	processors    map[string]Processor
@@ -112,6 +112,7 @@ func (m *ChainMonitor) Start() error {
 
 	m.wg.Add(1)
 	go m.processQueueLoop()
+	log.Info("Start monitoring blockchain")
 	return nil
 }
 
@@ -135,7 +136,7 @@ func (m *ChainMonitor) UnregisterProcessor(name string) {
 	delete(m.processors, name)
 }
 
-func NewChainMonitor(cfg *Config, db ethdb.Database, ethereum *eth.Ethereum) (*ChainMonitor, error) {
+func NewChainMonitor(cfg *MonitorConfig, db ethdb.Database, ethereum *eth.Ethereum) (*ChainMonitor, error) {
 	if err := cfg.Sanitize(); err != nil {
 		return nil, err
 	}
