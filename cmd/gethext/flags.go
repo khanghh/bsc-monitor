@@ -3,12 +3,16 @@ package main
 import "gopkg.in/urfave/cli.v1"
 
 var (
-	pluginDirFlag = cli.StringFlag{
-		Name:  "plugindir",
-		Usage: "Plugin directory",
+	pluginsDirFlag = cli.StringFlag{
+		Name:  "pluginsdir",
+		Usage: "Plugins directory",
 	}
-	noIndexFlag = cli.BoolFlag{
-		Name:  "noindex",
-		Usage: "Run geth without node indexing block chain",
+	monitorEnableFlag = cli.BoolFlag{
+		Name:  "monitor.enabled",
+		Usage: "Enable chain monitor",
+	}
+	indexerEnableFlag = cli.BoolFlag{
+		Name:  "indexer.enabled",
+		Usage: "Enable chain indexer",
 	}
 )

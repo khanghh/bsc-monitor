@@ -11,26 +11,43 @@ import (
 )
 
 var (
-	DefaultConfig = Config{
+	DefaultMonitorConfig = MonitorConfig{
 		ProcessQueue: 10000,
 		ProcessSlot:  1000,
+		Enabled:      false,
+	}
+	DefaultIndexerConfig = IndexerConfig{
+		ABIDir:  "abis",
+		Enabled: false,
 	}
 )
 
-type Config struct {
+type MonitorConfig struct {
 	ProcessQueue int
 	ProcessSlot  int
-	ABIDir       string
+	Enabled      bool
 }
 
-func (cfg *Config) Sanitize() error {
+func (cfg *MonitorConfig) Sanitize() error {
 	if cfg.ProcessQueue < 1 {
-		log.Warn("Sanitizing monitor process txs queue", "provided", cfg.ProcessQueue, "updated", DefaultConfig.ProcessQueue)
-		cfg.ProcessQueue = DefaultConfig.ProcessQueue
+		log.Warn("Sanitizing monitor process txs queue", "provided", cfg.ProcessQueue, "updated", DefaultMonitorConfig.ProcessQueue)
+		cfg.ProcessQueue = DefaultMonitorConfig.ProcessQueue
 	}
 	if cfg.ProcessSlot < 1 {
-		log.Warn("Sanitizing monitor process txs slot", "provided", cfg.ProcessSlot, "updated", DefaultConfig.ProcessSlot)
-		cfg.ProcessSlot = DefaultConfig.ProcessSlot
+		log.Warn("Sanitizing monitor process txs slot", "provided", cfg.ProcessSlot, "updated", DefaultMonitorConfig.ProcessSlot)
+		cfg.ProcessSlot = DefaultMonitorConfig.ProcessSlot
+	}
+	return nil
+}
+
+type IndexerConfig struct {
+	ABIDir  string
+	Enabled bool
+}
+
+func (cfg *IndexerConfig) Sanitize() error {
+	if len(cfg.ABIDir) == 0 {
+		log.Warn("Sanitizing indexer contract ABIs directory path", "provided", cfg.ABIDir, "updated", DefaultIndexerConfig.ABIDir)
 	}
 	return nil
 }
