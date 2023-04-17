@@ -36,18 +36,11 @@ func loadTOMLConfig(filename string, conf interface{}) error {
 	return err
 }
 
-func saveTOMLConfig(filename string, conf interface{}) error {
-	buf, err := tomlSettings.Marshal(conf)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filename, buf, 0644)
-}
-
 type configStore struct {
-	fileName string
-	fileInfo os.FileInfo
-	payload  map[string]interface{}
+	prefix     string
+	fileName   string
+	fileInfo   os.FileInfo
+	configData map[string]interface{}
 }
 
 func (c *configStore) getConfig(name string, cfg interface{}) error {
@@ -55,7 +48,7 @@ func (c *configStore) getConfig(name string, cfg interface{}) error {
 		rawConf interface{}
 		exists  bool
 	)
-	if rawConf, exists = c.payload[name]; !exists {
+	if rawConf, exists = c.configData[name]; !exists {
 		return nil
 	}
 	buf, err := tomlSettings.Marshal(rawConf)
@@ -71,27 +64,21 @@ func (c *configStore) loadConfig(name string, cfg interface{}) error {
 		return err
 	}
 	if c.fileInfo == nil || fileInfo.ModTime().After(c.fileInfo.ModTime()) {
-		if err := loadTOMLConfig(c.fileName, &c.payload); err != nil {
+		tomlConfig := make(map[string]interface{})
+		if err := loadTOMLConfig(c.fileName, &tomlConfig); err != nil {
 			return err
 		}
+		c.configData = tomlConfig[c.prefix].(map[string]interface{})
+		c.fileInfo = fileInfo
 	}
-	c.fileInfo = fileInfo
 	return c.getConfig(name, cfg)
 }
 
-func (c *configStore) saveConfig(name string, cfg interface{}) error {
-	if cfg == nil {
-		delete(c.payload, name)
-	} else {
-		c.payload[name] = cfg
-	}
-	return saveTOMLConfig(c.fileName, c.payload)
-}
-
-func NewConfigStore(fileName string) *configStore {
+func NewConfigStore(prefix, fileName string) *configStore {
 	cfg := &configStore{
-		fileName: fileName,
-		payload:  make(map[string]interface{}),
+		prefix:     prefix,
+		fileName:   fileName,
+		configData: make(map[string]interface{}),
 	}
 	return cfg
 }

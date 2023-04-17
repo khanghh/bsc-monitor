@@ -155,5 +155,4 @@ type PluginCtx struct {
 	*sharedCtx
 	Log        log.Logger
 	LoadConfig func(cfg interface{}) error
-	SaveConfig func(cfg interface{}) error
 }
