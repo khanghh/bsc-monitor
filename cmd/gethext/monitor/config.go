@@ -17,7 +17,7 @@ var (
 		Enabled:      false,
 	}
 	DefaultIndexerConfig = IndexerConfig{
-		ABIDir:  "abis",
+		Cache:   16, // Cache memory in MB for chain replayer
 		Enabled: false,
 	}
 )
@@ -41,13 +41,13 @@ func (cfg *MonitorConfig) Sanitize() error {
 }
 
 type IndexerConfig struct {
-	ABIDir  string
+	Cache   int
 	Enabled bool
 }
 
 func (cfg *IndexerConfig) Sanitize() error {
-	if len(cfg.ABIDir) == 0 {
-		log.Warn("Sanitizing indexer contract ABIs directory path", "provided", cfg.ABIDir, "updated", DefaultIndexerConfig.ABIDir)
+	if cfg.Cache <= 0 {
+		log.Warn("Sanitizing indexer cache size", "provided", cfg.Cache, "updated", DefaultIndexerConfig.Cache)
 	}
 	return nil
 }

@@ -15,18 +15,20 @@ import (
 )
 
 var (
-	LastIndexStateKey = []byte("LastIndexState") // LastIndexState tracks the hash of the last indexed statedb
-	LastIndexBlockKey = []byte("LastIndexBlock") // LastIndexBlock tracks the hash of the last indexed block
-	TotalAccountsKey  = []byte("TotalAccounts")
-	TotalContractsKey = []byte("TotalContracts")
+	LastIndexStateKey     = []byte("LastIndexState")     // LastIndexState tracks the root of the last indexed state trie
+	LastIndexBlockKey     = []byte("LastIndexBlock")     // LastIndexBlock tracks the hash of the last indexed block
+	TotalAccountsKey      = []byte("TotalAccounts")      // TotalAccounts stores the total number of accounts that have been indexed
+	TotalContractsKey     = []byte("TotalContracts")     // TotalContracts stores the total number of contracts that have been indexed
+	ContractInterfacesKey = []byte("ContractInterfaces") // ContractInterfaces stores all known contract interfaces
 
 	AccountInfoPrefix       = []byte("a") // AccountInfoPrefix + address -> account info
-	ContractABIPrefix       = []byte("c") // ContractInfoPrefix + address -> contract info
+	ContractInfoPrefix      = []byte("c") // ContractInfoPrefix + address -> contract info
 	AccountIndexStatePrefix = []byte("s") // AccountIndexStatePrefix + hash(StateAccount) -> account index state
-	AccountSentTxPrefix     = []byte("t") // AccountSentTxPrefix + address + block num + index -> transaction hash
-	AccountInternalTxPrefix = []byte("i") // AccountInternalTxPrefix + address + block num + index -> transaction hash
-	AccountTokenTxPrefix    = []byte("x") // AccountTokenTxPrefix + address + index -> transaction hash
-	TokenHolderAddrPrefix   = []byte("h") // TokenHolderPrefix + token address + index -> account address
+	AccountSentTxPrefix     = []byte("t") // AccountSentTxPrefix + address + refNum -> transaction hash
+	AccountInternalTxPrefix = []byte("i") // AccountInternalTxPrefix + address + refNum -> transaction hash
+	AccountTokenTxPrefix    = []byte("x") // AccountTokenTxPrefix + address + refNum -> transaction hash
+	TokenHolderPrefix       = []byte("h") // TokenHolderPrefix + token address + refNum -> account address
+	FourBytesMethodPrefix   = []byte("4") // FourBytesMethodPrefix + 4 bytes sig -> list of methods
 )
 
 var (
@@ -40,7 +42,7 @@ func AccountInfoKey(addr common.Address) []byte {
 
 func ContractInfoKey(addr common.Address) []byte {
 	addrHash := crypto.Keccak256Hash(addr.Bytes())
-	return append(ContractABIPrefix, addrHash.Bytes()...)
+	return append(ContractInfoPrefix, addrHash.Bytes()...)
 }
 
 func AccountIndexStateKey(hash common.Hash) []byte {
@@ -80,5 +82,5 @@ func AccountTokenTxKey(addr common.Address, refNum uint64) []byte {
 }
 
 func TokenHolderAddrKey(tknAddr common.Address, refNum uint64) []byte {
-	return indexItemKey(TokenHolderAddrPrefix, tknAddr, refNum)
+	return indexItemKey(TokenHolderPrefix, tknAddr, refNum)
 }
