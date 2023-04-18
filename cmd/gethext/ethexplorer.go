@@ -29,14 +29,15 @@ const (
 )
 
 type EthExplorerConfig struct {
-	ConfigFile string
-	Monitor    *monitor.MonitorConfig
-	Indexer    *monitor.IndexerConfig
-	PluginsDir string
+	ConfigFile  string
+	PluginsDir  string
+	InstanceDir string
+	Monitor     *monitor.MonitorConfig
+	Indexer     *monitor.IndexerConfig
 }
 
 type EthExplorer struct {
-	cfg           *EthExplorerConfig
+	config        *EthExplorerConfig
 	chainMonitor  *monitor.ChainMonitor
 	chainIndexer  *monitor.ChainIndexer
 	pluginManager *plugin.PluginManager
@@ -52,13 +53,13 @@ func (s *EthExplorer) Start() error {
 		log.Error("Could not load plugins", "error", err)
 		return err
 	}
-	if s.cfg.Monitor.Enabled {
+	if s.config.Monitor.Enabled {
 		if err := s.chainMonitor.Start(); err != nil {
 			log.Error("Could not start chain monitor", "error", err)
 			return err
 		}
 	}
-	if s.cfg.Indexer.Enabled {
+	if s.config.Indexer.Enabled {
 		if err := s.chainIndexer.Start(); err != nil {
 			log.Error("Could not start chain indexer", "error", err)
 			return err
@@ -95,13 +96,13 @@ func (s *EthExplorer) APIs() []rpc.API {
 	}
 }
 
-func NewExplorerService(opts *EthExplorerConfig, node *node.Node, eth *eth.Ethereum) (*EthExplorer, error) {
-	diskdb, err := node.OpenDatabaseWithFreezer(extDatabaseName, extDatabaseCache, extDatabaseHandle, "",
-		extNamespace, false, false, false, false, true)
+func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethereum) (*EthExplorer, error) {
+	diskdb, err := node.OpenDatabase(extDatabaseName, extDatabaseCache, extDatabaseHandle, extNamespace, false)
 	if err != nil {
 		return nil, err
 	}
-	chainMonitor, err := monitor.NewChainMonitor(opts.Monitor, diskdb, eth)
+
+	chainMonitor, err := monitor.NewChainMonitor(cfg.Monitor, diskdb, eth)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +118,13 @@ func NewExplorerService(opts *EthExplorerConfig, node *node.Node, eth *eth.Ether
 		return nil, err
 	}
 
-	pluginManager, err := plugin.NewPluginManager(opts.PluginsDir, opts.ConfigFile, node, eth.APIBackend, chainMonitor, taskManager)
+	pluginManager, err := plugin.NewPluginManager(cfg.PluginsDir, cfg.ConfigFile, node, eth.APIBackend, chainMonitor, taskManager)
 	if err != nil {
 		return nil, err
 	}
 
 	instance := &EthExplorer{
-		cfg:           opts,
+		config:        cfg,
 		chainMonitor:  chainMonitor,
 		chainIndexer:  chainIndexer,
 		pluginManager: pluginManager,
