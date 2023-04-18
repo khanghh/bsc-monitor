@@ -341,10 +341,11 @@ func geth(ctx *cli.Context) error {
 	defer stack.Close()
 
 	serviceCfg := &EthExplorerConfig{
-		// ConfigFile: ctx.
-		Monitor:    &cfg.Monitor,
-		Indexer:    &cfg.Indexer,
-		PluginsDir: resolvePluginsDir(ctx.GlobalString(pluginsDirFlag.Name)),
+		ConfigFile:  ctx.GlobalString(configFileFlag.Name),
+		InstanceDir: stack.InstanceDir(),
+		PluginsDir:  resolvePluginsDir(ctx.GlobalString(pluginsDirFlag.Name)),
+		Monitor:     &cfg.Monitor,
+		Indexer:     &cfg.Indexer,
 	}
 	ethexplorer, err := NewExplorerService(serviceCfg, stack, ethereum)
 	if err != nil {
