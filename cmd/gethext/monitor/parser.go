@@ -8,28 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// ContractParser detect all methods and interfaces that the contract was implemented
-type ContractParser struct {
-	abiDir string
-}
-
-// ParseMethods parse the contract code to get all methods it have
-func (d *ContractParser) ParseMethods(bytecode []byte) []string {
-	// Single function calls will follow the following repeating pattern:
-	// DUP1
-	// PUSH4 <4-byte function signature>
-	// EQ
-	// PUSH2 <jumpdestination for the function>
-	// JUMPI
-	return nil
-}
-
-func NewContractDetector(abiDir string) *ContractParser {
-	return &ContractParser{
-		abiDir: abiDir,
-	}
-}
-
 type blockParser struct {
 	data   *blockIndexData
 	txAccs []AccountDetail // contracts created after transaction finished

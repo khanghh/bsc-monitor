@@ -61,8 +61,9 @@ type AccountInfo struct {
 
 // ContractInfo is additional data for account if it's a contract
 type ContractInfo struct {
-	Interfaces []string
-	Creator    common.Address
+	Interfaces []string       // List of interface names the contract implemented
+	OwnMethods []string       // List of methods excluded from implemented intefaces
+	Creator    common.Address // Contract creator address
 }
 
 type AccountDetail struct {

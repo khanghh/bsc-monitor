@@ -10,10 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type RLPUnmarshaler interface {
-	UnmarshalRLP([]byte) error
-}
-
 // TrieExt store extra data for key-value pairs in trie
 type TrieExt struct {
 	diskdb   ethdb.Database
