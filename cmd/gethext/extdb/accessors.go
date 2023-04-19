@@ -12,6 +12,14 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+type RLPMarshaler interface {
+	MarshalJSON() ([]byte, error)
+}
+
+type RLPUnmarshaler interface {
+	UnmarshalRLP([]byte) error
+}
+
 func ReadLastIndexRoot(db ethdb.KeyValueReader) common.Hash {
 	data, _ := db.Get(LastIndexStateKey)
 	if len(data) != common.HashLength {
@@ -94,5 +102,27 @@ func WriteAccountTokenTx(db ethdb.KeyValueWriter, addr common.Address, ref uint6
 func WriteTokenHolderAddr(db ethdb.KeyValueWriter, tknAddr common.Address, ref uint64, holderAddr common.Address) {
 	if err := db.Put(TokenHolderAddrKey(tknAddr, ref), holderAddr.Bytes()); err != nil {
 		log.Crit("Failed to write token holder address", "err", err)
+	}
+}
+
+func ReadInterfaceList(db ethdb.KeyValueReader) []byte {
+	data, _ := db.Get(InterfaceListKey)
+	return data
+}
+
+func WriteInterfaceList(db ethdb.KeyValueWriter, data []byte) {
+	if err := db.Put(InterfaceListKey, data); err != nil {
+		log.Crit("Failed to write contract interface list", "err", err)
+	}
+}
+
+func ReadFourBytesABIs(db ethdb.KeyValueReader, fourBytes []byte) []byte {
+	data, _ := db.Get(FourBytesABIsKey(fourBytes))
+	return data
+}
+
+func WriteFourBytesABIs(db ethdb.KeyValueWriter, fourBytes []byte, data []byte) {
+	if err := db.Put(InterfaceListKey, data); err != nil {
+		log.Crit("Failed to write 4-byes method abis", "err", err)
 	}
 }
