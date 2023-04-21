@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?`)
+var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?$`)
 
 func parseArguments(str string) (abi.Arguments, error) {
 	args := make(abi.Arguments, 0)
