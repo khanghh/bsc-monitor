@@ -122,7 +122,7 @@ func ReadFourBytesABIs(db ethdb.KeyValueReader, fourBytes []byte) []byte {
 }
 
 func WriteFourBytesABIs(db ethdb.KeyValueWriter, fourBytes []byte, data []byte) {
-	if err := db.Put(InterfaceListKey, data); err != nil {
+	if err := db.Put(FourBytesABIsKey(fourBytes), data); err != nil {
 		log.Crit("Failed to write 4-byes method abis", "err", err)
 	}
 }
