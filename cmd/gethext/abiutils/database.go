@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -30,20 +31,21 @@ func (list *abiList) UnmarshalJSON(data []byte) error {
 		entry ABIEntry
 		err   error
 	)
-	if methodSigRegex.Match(data) {
-		if entry, err = ParseMethodSig(string(data)); err != nil {
-			return err
+
+	if text, err := strconv.Unquote(string(data)); err == nil {
+		if entry, err = ParseMethodSig(text); err == nil {
+			*list = append(*list, entry)
 		}
-		*list = append(*list, entry)
 		return nil
 	}
+
 	rawEntries := []json.RawMessage{}
 	if err := json.Unmarshal(data, &rawEntries); err != nil {
 		return err
 	}
 	for _, raw := range rawEntries {
-		if methodSigRegex.Match(raw) {
-			entry, err = ParseMethodSig(string(data))
+		if text, qerr := strconv.Unquote(string(raw)); qerr == nil {
+			entry, err = ParseMethodSig(text)
 		} else {
 			err = json.Unmarshal(raw, &entry)
 		}
@@ -63,20 +65,20 @@ func addEntries(abis map[string]abiList, list abiList) error {
 			entries.addUnique(entry)
 			continue
 		}
-		abis[id] = list
+		abis[id] = abiList{entry}
 	}
 	return nil
 }
 
 func readFourBytesABIs(db ethdb.Database, fourbytes []byte) abiList {
 	ret := abiList{}
-	enc := extdb.ReadFourBytesABIs(db, fourbytes)
-	rlp.DecodeBytes(enc, &ret)
+	data := extdb.ReadFourBytesABIs(db, fourbytes)
+	json.Unmarshal(data, &ret)
 	return ret
 }
 
 func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool) (int, error) {
-	if len(abis) > 0 {
+	if len(abis) == 0 {
 		return 0, nil
 	}
 	imported := 0
@@ -88,18 +90,21 @@ func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool)
 		}
 		entries := list
 		if !override {
-			entries := readFourBytesABIs(db, fourbytes)
+			entries = readFourBytesABIs(db, fourbytes)
 			modified := false
 			for _, entry := range list {
-				modified = modified || entries.addUnique(entry)
+				modified = entries.addUnique(entry) || modified
 			}
 			if !modified {
 				entries = nil
 			}
 		}
 		if len(entries) > 0 {
-			enc, _ := rlp.EncodeToBytes(entries)
-			extdb.WriteFourBytesABIs(batch, fourbytes, enc)
+			data, err := json.Marshal(entries)
+			if err != nil {
+				return 0, err
+			}
+			extdb.WriteFourBytesABIs(db, fourbytes, data)
 			imported += len(entries)
 		}
 	}
@@ -166,13 +171,13 @@ func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
 		return err
 	}
 
-	entries, ifAbis := data.FourBytes, data.Interfaces
-	ifs := abisToIterfaces(ifAbis)
-	for _, list := range ifAbis {
-		addEntries(entries, list)
+	fourbytesABIs, ifABIs := data.FourBytes, data.Interfaces
+	ifs := abisToIterfaces(ifABIs)
+	for _, list := range ifABIs {
+		addEntries(fourbytesABIs, list)
 	}
 
-	abiCount, err := import4BytesABIs(db, entries, override)
+	abiCount, err := import4BytesABIs(db, fourbytesABIs, override)
 	if err != nil {
 		log.Error("Could not import 4-bytes ABI entries", "error", err)
 		return err
@@ -182,6 +187,6 @@ func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
 		log.Error("Could not import contract interfaces", "error", err)
 		return err
 	}
-	log.Info(fmt.Sprintf("Imported %d abi entries and %d interfaces", abiCount, ifCount))
+	log.Info(fmt.Sprintf("Imported %d ABI entries and %d interfaces", abiCount, ifCount))
 	return nil
 }

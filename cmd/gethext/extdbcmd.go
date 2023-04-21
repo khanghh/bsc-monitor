@@ -24,11 +24,9 @@ var (
 		Usage:     "Low level operations for extension database",
 		ArgsUsage: "",
 		Category:  "EXTDB COMMANDS",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
-		},
 		Subcommands: []cli.Command{
 			extdbInspectCmd,
+			import4BytesCmd,
 		},
 	}
 	extdbInspectCmd = cli.Command{
