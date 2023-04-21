@@ -4,10 +4,18 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"gopkg.in/urfave/cli.v1"
+)
+
+var (
+	importOverrideFlag = cli.BoolFlag{
+		Name:  "override",
+		Usage: "Override 4-bytes ABI entries in database with provided data. If not specified, command will append only unique entries",
+	}
 )
 
 var (
@@ -39,6 +47,7 @@ var (
 		ArgsUsage: "<data.json>",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
+			importOverrideFlag,
 		},
 		Usage:       "Import 4-bytes signatures and pre-defined contract interfaces",
 		Description: `This commands imports 4-bytes signature and known interface's methods to the database. Contract parser use this data to detect contract type and extract contract methods`,
@@ -79,6 +88,7 @@ func inspectExtDB(ctx *cli.Context) error {
 }
 
 func import4Bytes(ctx *cli.Context) error {
+	override := ctx.Bool(importOverrideFlag.Name)
 	if ctx.NArg() != 1 {
 		return fmt.Errorf("invalid number of arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -93,5 +103,5 @@ func import4Bytes(ctx *cli.Context) error {
 	if err != nil {
 		utils.Fatalf("Could not read input file: %v", err)
 	}
-	return extdb.Import4BytesData(db, file)
+	return abiutils.ImportABIsData(db, file, override)
 }
