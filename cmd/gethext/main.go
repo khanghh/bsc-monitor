@@ -259,6 +259,7 @@ func init() {
 		utils.ShowDeprecated,
 		// See snapshot.go
 		snapshotCommand,
+		extdbCommand,
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
