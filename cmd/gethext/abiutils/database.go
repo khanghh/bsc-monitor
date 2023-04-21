@@ -151,14 +151,17 @@ func readInterfaceList(db ethdb.Database) map[string]rawInterface {
 	return ret
 }
 
-func importInterfaces(db ethdb.Database, ifList []rawInterface) (int, error) {
-	ifs := readInterfaceList(db)
-	for _, item := range ifList {
-		ifs[item.Name] = item
+func importInterfaces(db ethdb.Database, ifs []rawInterface, override bool) (int, error) {
+	if !override {
+		allIfs := readInterfaceList(db)
+		for _, item := range ifs {
+			allIfs[item.Name] = item
+		}
+		ifs = maps.Values(allIfs)
 	}
-	enc, _ := rlp.EncodeToBytes(maps.Values(ifs))
+	enc, _ := rlp.EncodeToBytes(ifs)
 	extdb.WriteInterfaceList(db, enc)
-	return len(ifList), nil
+	return len(ifs), nil
 }
 
 func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
@@ -182,7 +185,7 @@ func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
 		log.Error("Could not import 4-bytes ABI entries", "error", err)
 		return err
 	}
-	ifCount, err := importInterfaces(db, ifs)
+	ifCount, err := importInterfaces(db, ifs, override)
 	if err != nil {
 		log.Error("Could not import contract interfaces", "error", err)
 		return err
