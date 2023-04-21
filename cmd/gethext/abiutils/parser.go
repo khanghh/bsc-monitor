@@ -1,23 +1,76 @@
 package abiutils
 
 import (
+	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-// ParseMethodSig parses method identifier string into abi.Method
-func ParseMethodSig(str string) (*abi.Method, error) {
-	return nil, nil
+var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?`)
+
+func parseArguments(str string) (abi.Arguments, error) {
+	args := make(abi.Arguments, 0)
+	if len(str) == 0 {
+		return args, nil
+	}
+	argArr := strings.Split(str, ",")
+	for _, arg := range argArr {
+		tokens := strings.Fields(arg)
+		var name string
+		typeStr := tokens[len(tokens)-1] // get the last token as type
+		if len(tokens) == 2 {
+			name = tokens[0]
+		}
+		argType, err := abi.NewType(typeStr, typeStr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("invalid arguments")
+		}
+		args = append(args, abi.Argument{
+			Name:    name,
+			Type:    argType,
+			Indexed: false,
+		})
+	}
+	return args, nil
 }
 
-// ContractParser parses all methods in contracts and detects which interfaces the contract was implemented
-type ContractParser struct {
-	db         ethdb.Database
-	interfaces map[string]Interface // known contract interfaces
+// ParseMethodSig parses method identifier string into abi.Method
+func ParseMethodSig(str string) (ABIEntry, error) {
+	matches := methodSigRegex.FindStringSubmatch(str)
+	if matches == nil || len(matches) < 2 {
+		return ABIEntry{}, fmt.Errorf("invalid method signature")
+	}
+	name := matches[1]
+	var inputs, outputs abi.Arguments
+	var err error
+	if len(matches) > 2 {
+		if inputs, err = parseArguments(matches[2]); err != nil {
+			return ABIEntry{}, err
+		}
+	}
+	if len(matches) == 4 {
+		if outputs, err = parseArguments(matches[2]); err != nil {
+			return ABIEntry{}, err
+		}
+	}
+	return ABIEntry{
+		Type:    "function",
+		Name:    name,
+		Inputs:  inputs,
+		Outputs: outputs,
+	}, nil
+}
+
+// ABIParser parses all methods in contracts and detects which interfaces the contract was implemented
+type ABIParser struct {
+	db ethdb.Database
 }
 
 // ParseMethodIds parses the contract byte code to get all 4-bytes method ids
-func (p *ContractParser) ParseMethodIds(bytecode []byte) []MethodId {
+func (p *ABIParser) ParseMethodIds(bytecode []byte) []MethodId {
 	// Single function calls will follow the following repeating pattern:
 	// DUP1
 	// PUSH4 <4-byte function signature>
@@ -27,17 +80,21 @@ func (p *ContractParser) ParseMethodIds(bytecode []byte) []MethodId {
 	return nil
 }
 
-func (p *ContractParser) GetMethods(methodIds []MethodId) map[MethodId]abi.Method {
+func (p *ABIParser) GetMethodById(methodId MethodId) []abi.Method {
 	return nil
 }
 
-// ParseInterfaces
-func (p *ContractParser) ParseInterfaces(methodIds []MethodId) []Interface {
+// GetInterfaces
+func (p *ABIParser) GetInterfaces(methodIds []MethodId) []Interface {
 	return nil
 }
 
-func NewContractParser(db ethdb.Database) (*ContractParser, error) {
-	return &ContractParser{
+func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
+	return nil, nil
+}
+
+func NewParser(db ethdb.Database) (*ABIParser, error) {
+	return &ABIParser{
 		db: db,
 	}, nil
 }

@@ -3,7 +3,6 @@ package extdb
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -131,11 +130,5 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	if unaccounted.size > 0 {
 		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
 	}
-	return nil
-}
-
-// Import4BytesData imports known 4-bytes signature and contract interfaces
-func Import4BytesData(db ethdb.Database, reader io.Reader) error {
-	// TODO: import method abis from json files
 	return nil
 }
