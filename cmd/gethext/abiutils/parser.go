@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?$`)
@@ -66,7 +67,8 @@ func ParseMethodSig(str string) (ABIEntry, error) {
 
 // ABIParser parses all methods in contracts and detects which interfaces the contract was implemented
 type ABIParser struct {
-	db ethdb.Database
+	db         ethdb.Database
+	interfaces map[string]Interface
 }
 
 // ParseMethodIds parses the contract byte code to get all 4-bytes method ids
@@ -93,8 +95,24 @@ func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
 	return nil, nil
 }
 
+func loadInterfaces(db ethdb.Database) map[string]Interface {
+	interfaces := make(map[string]Interface)
+	rawIfs := readInterfaceABIs(db)
+	for _, rawIf := range rawIfs {
+		item, err := NewInterface(rawIf.Name, rawIf.ABI)
+		if err != nil {
+			log.Error("Invalid contract interface", "name", rawIf.Name, "error", err)
+			continue
+		}
+		interfaces[item.Name] = item
+	}
+	log.Info(fmt.Sprintf("Loaded %d contract interfaces", len(interfaces)))
+	return interfaces
+}
+
 func NewParser(db ethdb.Database) (*ABIParser, error) {
 	return &ABIParser{
-		db: db,
+		db:         db,
+		interfaces: loadInterfaces(db),
 	}, nil
 }
