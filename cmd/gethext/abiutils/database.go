@@ -1,6 +1,7 @@
 package abiutils
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -8,10 +9,9 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
-	"golang.org/x/exp/maps"
 )
 
 type abiList []ABIEntry
@@ -53,19 +53,6 @@ func (list *abiList) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		*list = append(*list, entry)
-	}
-	return nil
-}
-
-// addEntries add a list of ABIEntry into 4-bytes sigs map without duplicate
-func addEntries(abis map[string]abiList, list abiList) error {
-	for _, entry := range list {
-		id := hex.EncodeToString(entry.getID())
-		if entries, ok := abis[id]; ok {
-			entries.addUnique(entry)
-			continue
-		}
-		abis[id] = abiList{entry}
 	}
 	return nil
 }
@@ -113,55 +100,44 @@ func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool)
 
 // rawInterface is data struct hold information about an contract interface to be stored in extdb
 type rawInterface struct {
-	Name    string   // Name of interface
-	Methods []string // List of method signatures
-	Events  []string // List of event signatures
-	Errors  []string // List of error signatures
+	Name string     `json:"name"` // Name of interface
+	ABI  []ABIEntry `json:"abi"`  // List of signatures fo methods, events, errors
 }
 
-func abisToIterfaces(ifabis map[string]abiList) []rawInterface {
-	ifs := make([]rawInterface, 0)
-	for name, entries := range ifabis {
-		methods := make([]string, 0)
-		events := make([]string, 0)
-		errors := make([]string, 0)
-		for _, entry := range entries {
-			switch entry.Type {
-			case "function":
-				methods = append(methods, entry.getSig())
-			case "event":
-				events = append(events, entry.getSig())
-			case "error":
-				errors = append(errors, entry.getSig())
+func readInterfaceABIs(db ethdb.Database) []rawInterface {
+	it := db.NewIterator(extdb.InterfaceABIPrefix, nil)
+	ret := make([]rawInterface, 0)
+	for it.Next() {
+		if bytes.HasSuffix(it.Key(), extdb.InterfaceABISuffix) {
+			raw := rawInterface{}
+			if err := json.Unmarshal(it.Value(), &raw); err != nil {
+				log.Error("could not load interface abi", "key", hexutil.Encode(it.Key()))
+				continue
 			}
+			ret = append(ret, raw)
 		}
-		ifs = append(ifs, rawInterface{name, methods, events, errors})
-	}
-	return ifs
-}
-
-func readInterfaceList(db ethdb.Database) map[string]rawInterface {
-	ret := make(map[string]rawInterface)
-	entries := make([]rawInterface, 0)
-	enc := extdb.ReadInterfaceList(db)
-	rlp.DecodeBytes(enc, &entries)
-	for _, item := range entries {
-		ret[item.Name] = item
 	}
 	return ret
 }
 
-func importInterfaces(db ethdb.Database, ifs []rawInterface, override bool) (int, error) {
-	if !override {
-		allIfs := readInterfaceList(db)
-		for _, item := range ifs {
-			allIfs[item.Name] = item
+func importInterfaces(db ethdb.Database, ifs map[string]abiList, override bool) (int, int, error) {
+	batch := db.NewBatch()
+	importList := []rawInterface{}
+	for name, item := range ifs {
+		raw := rawInterface{name, item}
+		if override {
+			importList = append(importList, raw)
+		} else if exits, _ := db.Has(extdb.InterfaceABIKey(name)); !exits {
+			importList = append(importList, raw)
 		}
-		ifs = maps.Values(allIfs)
 	}
-	enc, _ := rlp.EncodeToBytes(ifs)
-	extdb.WriteInterfaceList(db, enc)
-	return len(ifs), nil
+	numEntries := 0
+	for _, item := range importList {
+		data, _ := json.Marshal(item)
+		extdb.WriteInterfaceABI(batch, item.Name, data)
+		numEntries += len(item.ABI)
+	}
+	return len(importList), numEntries, batch.Write()
 }
 
 func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
@@ -174,22 +150,18 @@ func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
 		return err
 	}
 
-	fourbytesABIs, ifABIs := data.FourBytes, data.Interfaces
-	ifs := abisToIterfaces(ifABIs)
-	for _, list := range ifABIs {
-		addEntries(fourbytesABIs, list)
-	}
-
-	abiCount, err := import4BytesABIs(db, fourbytesABIs, override)
+	abiCount, err := import4BytesABIs(db, data.FourBytes, override)
 	if err != nil {
 		log.Error("Could not import 4-bytes ABI entries", "error", err)
 		return err
 	}
-	ifCount, err := importInterfaces(db, ifs, override)
+	log.Info(fmt.Sprintf("Imported %d 4-bytes ABI entries", abiCount))
+
+	ifCount, abiCount, err := importInterfaces(db, data.Interfaces, override)
 	if err != nil {
 		log.Error("Could not import contract interfaces", "error", err)
 		return err
 	}
-	log.Info(fmt.Sprintf("Imported %d ABI entries and %d interfaces", abiCount, ifCount))
+	log.Info(fmt.Sprintf("Imported %d contract interfaces, total ABI entries: %d", abiCount, ifCount))
 	return nil
 }

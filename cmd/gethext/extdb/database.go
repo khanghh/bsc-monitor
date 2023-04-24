@@ -53,11 +53,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		logged = time.Now()
 
 		// Key-value store statistics
-		accounts     stat
-		contracts    stat
-		indexStates  stat
-		indexRecords stat
-		fourBytes    stat
+		accounts      stat
+		contracts     stat
+		interfaceABIs stat
+		indexStates   stat
+		indexRecords  stat
+		fourBytes     stat
 
 		// Meta- and unaccounted data
 		metadata    stat
@@ -90,10 +91,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			indexRecords.Add(size)
 		case bytes.HasPrefix(key, FourBytesMethodPrefix) && len(key) == (len(FourBytesMethodPrefix)+4):
 			fourBytes.Add(size)
+		case bytes.HasPrefix(key, InterfaceABIPrefix) && bytes.HasSuffix(key, InterfaceABISuffix):
+			interfaceABIs.Add(size)
 		default:
 			var accounted bool
 			for _, meta := range [][]byte{
-				LastIndexStateKey, LastIndexBlockKey, TotalAccountsKey, TotalContractsKey, InterfaceListKey,
+				LastIndexStateKey, LastIndexBlockKey, TotalAccountsKey, TotalContractsKey,
 			} {
 				if bytes.Equal(key, meta) {
 					metadata.Add(size)
@@ -119,6 +122,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Account Index States", indexStates.Size(), indexStates.Count()},
 		{"Key-Value store", "Account Index Data", indexRecords.Size(), indexRecords.Count()},
 		{"Key-Value store", "Method Signatures", fourBytes.Size(), fourBytes.Count()},
+		{"Key-Value store", "Interface ABIs", interfaceABIs.Size(), interfaceABIs.Count()},
 		{"Key-Value store", "Metadata", metadata.Size(), metadata.Count()},
 	}
 	table := tablewriter.NewWriter(os.Stdout)

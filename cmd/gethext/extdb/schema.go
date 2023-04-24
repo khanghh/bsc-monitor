@@ -19,16 +19,17 @@ var (
 	LastIndexBlockKey = []byte("LastIndexBlock") // LastIndexBlock tracks the hash of the last indexed block
 	TotalAccountsKey  = []byte("TotalAccounts")  // TotalAccounts stores the total number of accounts that have been indexed
 	TotalContractsKey = []byte("TotalContracts") // TotalContracts stores the total number of contracts that have been indexed
-	InterfaceListKey  = []byte("InterfaceList")  // InterfaceList stores all known contract interfaces
 
-	AccountInfoPrefix       = []byte("a") // AccountInfoPrefix + address -> account info
-	ContractInfoPrefix      = []byte("c") // ContractInfoPrefix + address -> contract info
-	AccountIndexStatePrefix = []byte("s") // AccountIndexStatePrefix + hash(StateAccount) -> account index state
-	AccountSentTxPrefix     = []byte("t") // AccountSentTxPrefix + address + refNum -> transaction hash
-	AccountInternalTxPrefix = []byte("r") // AccountInternalTxPrefix + address + refNum -> transaction hash
-	AccountTokenTxPrefix    = []byte("x") // AccountTokenTxPrefix + address + refNum -> transaction hash
-	TokenHolderPrefix       = []byte("h") // TokenHolderPrefix + token address + refNum -> account address
-	FourBytesMethodPrefix   = []byte("4") // FourBytesMethodPrefix + 4 bytes sig -> list of method abis
+	AccountInfoPrefix       = []byte("a")   // AccountInfoPrefix + address -> account info
+	ContractInfoPrefix      = []byte("c")   // ContractInfoPrefix + address -> contract info
+	AccountIndexStatePrefix = []byte("s")   // AccountIndexStatePrefix + hash(StateAccount) -> account index state
+	AccountSentTxPrefix     = []byte("t")   // AccountSentTxPrefix + address + refNum -> transaction hash
+	AccountInternalTxPrefix = []byte("i")   // AccountInternalTxPrefix + address + refNum -> transaction hash
+	AccountTokenTxPrefix    = []byte("x")   // AccountTokenTxPrefix + address + refNum -> transaction hash
+	TokenHolderPrefix       = []byte("h")   // TokenHolderPrefix + token address + refNum -> account address
+	FourBytesMethodPrefix   = []byte("4")   // FourBytesMethodPrefix + 4 bytes sig -> list of method abis
+	InterfaceABIPrefix      = []byte("I")   // InterfaceABIPrefix + name + InterfaceABISuffix -> contract interface ABI
+	InterfaceABISuffix      = []byte("abi") // InterfaceABISuffix suffix of interface ABI key. e.g: IERC20abi -> ERC20 interface ABI
 )
 
 var (
@@ -87,4 +88,12 @@ func TokenHolderAddrKey(tknAddr common.Address, refNum uint64) []byte {
 
 func FourBytesABIsKey(fourBytes []byte) []byte {
 	return append(FourBytesMethodPrefix, fourBytes...)
+}
+
+func InterfaceABIKey(name string) []byte {
+	key := make([]byte, 0, len(InterfaceABIPrefix)+len(name)+len(InterfaceABISuffix))
+	key = append(key, InterfaceABIPrefix...)
+	key = append(key, name...)
+	key = append(key, InterfaceABISuffix...)
+	return key
 }
