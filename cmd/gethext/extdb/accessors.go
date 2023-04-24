@@ -105,17 +105,6 @@ func WriteTokenHolderAddr(db ethdb.KeyValueWriter, tknAddr common.Address, ref u
 	}
 }
 
-func ReadInterfaceList(db ethdb.KeyValueReader) []byte {
-	data, _ := db.Get(InterfaceListKey)
-	return data
-}
-
-func WriteInterfaceList(db ethdb.KeyValueWriter, data []byte) {
-	if err := db.Put(InterfaceListKey, data); err != nil {
-		log.Crit("Failed to write contract interface list", "err", err)
-	}
-}
-
 func ReadFourBytesABIs(db ethdb.KeyValueReader, fourBytes []byte) []byte {
 	data, _ := db.Get(FourBytesABIsKey(fourBytes))
 	return data
@@ -124,5 +113,16 @@ func ReadFourBytesABIs(db ethdb.KeyValueReader, fourBytes []byte) []byte {
 func WriteFourBytesABIs(db ethdb.KeyValueWriter, fourBytes []byte, data []byte) {
 	if err := db.Put(FourBytesABIsKey(fourBytes), data); err != nil {
 		log.Crit("Failed to write 4-byes method abis", "err", err)
+	}
+}
+
+func ReadInterfaceABI(db ethdb.KeyValueReader, name string) []byte {
+	data, _ := db.Get(InterfaceABIKey(name))
+	return data
+}
+
+func WriteInterfaceABI(db ethdb.KeyValueWriter, name string, data []byte) {
+	if err := db.Put(InterfaceABIKey(name), data); err != nil {
+		log.Crit("Failed to write contract interface list", "err", err)
 	}
 }

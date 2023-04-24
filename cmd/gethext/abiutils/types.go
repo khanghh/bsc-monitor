@@ -33,15 +33,34 @@ func HexToMethodId(s string) MethodId {
 }
 
 type Interface struct {
-	Name    string
-	Methods map[string]abi.Method
-	Events  map[string]abi.Event
-	Errors  map[string]abi.Error
+	abi.ABI
+	Name string
 }
 
-type FourByteMethod struct {
-	Id      MethodId
-	Methods []abi.Method
+func NewInterface(name string, entries []ABIEntry) (Interface, error) {
+	methods := make(map[string]abi.Method)
+	events := make(map[string]abi.Event)
+	errors := make(map[string]abi.Error)
+	for _, entry := range entries {
+		switch entry.Type {
+		case "function":
+			methods[entry.Name] = abi.NewMethod(name, entry.Name, abi.Function, entry.StateMutability, false, false, entry.Inputs, entry.Outputs)
+		case "event":
+			events[entry.Name] = abi.NewEvent(name, entry.Name, entry.Anonymous, entry.Inputs)
+		case "error":
+			errors[entry.Name] = abi.NewError(entry.Name, entry.Inputs)
+		default:
+			return Interface{}, fmt.Errorf("invalid abi entry type: %v", entry.Type)
+		}
+	}
+	return Interface{
+		ABI: abi.ABI{
+			Methods: methods,
+			Events:  events,
+			Errors:  errors,
+		},
+		Name: name,
+	}, nil
 }
 
 type abiEntryMarshaling struct {
@@ -112,6 +131,13 @@ func (e *ABIEntry) getSig() string {
 
 func (e *ABIEntry) getID() []byte {
 	return crypto.Keccak256([]byte(e.getSig()))[:4]
+}
+
+func sigToID(sig string) MethodId {
+	id := MethodId{}
+	hash := crypto.Keccak256([]byte(sig))
+	copy(id[:], hash[:4])
+	return id
 }
 
 // Contract holds information about a contract such as name, implemented interfaces,
