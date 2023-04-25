@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/core/asm"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -65,30 +67,91 @@ func ParseMethodSig(str string) (ABIEntry, error) {
 	}, nil
 }
 
+// ParseMethodIds parses the contract byte code to get all 4-bytes method ids
+// Single function calls will follow the following repeating pattern:
+// DUP1
+// PUSH4 <4-byte function signature>
+// EQ
+// PUSH2 <jumpdestination for the function>
+// JUMPI
+func ParseMethodIds(bytecode []byte) []MethodId {
+	ret := []MethodId{}
+	pattern := []vm.OpCode{vm.DUP1, vm.PUSH4, 0x00, vm.PUSH2, vm.JUMPI}
+	matchPattern := func(ins []vm.OpCode) bool {
+		if len(ins) < len(pattern) {
+			return false
+		}
+		segment := ins[len(ins)-len(pattern):]
+		for i, op := range pattern {
+			if op != 0x00 && op != segment[i] {
+				return false
+			}
+		}
+		return true
+	}
+	push4Args := [4]byte{}
+	inJumpTable := false
+	instructions := []vm.OpCode{}
+	it := asm.NewInstructionIterator(bytecode)
+	for it.Next() {
+		instructions = append(instructions, it.Op())
+		if it.Op() == vm.CALLDATALOAD && !inJumpTable {
+			inJumpTable = true
+		}
+		if inJumpTable {
+			if it.Op() == vm.PUSH4 {
+				copy(push4Args[:], it.Arg())
+			}
+			if it.Op() == vm.JUMPI && matchPattern(instructions) {
+				exited := false
+				for _, id := range ret {
+					if id == push4Args {
+						exited = true
+						break
+					}
+				}
+				if !exited {
+					ret = append(ret, push4Args)
+				}
+				instructions = []vm.OpCode{}
+			}
+			if it.Op() == vm.REVERT {
+				break
+			}
+		}
+	}
+	return ret
+}
+
 // ABIParser parses all methods in contracts and detects which interfaces the contract was implemented
 type ABIParser struct {
 	db         ethdb.Database
 	interfaces map[string]Interface
 }
 
-// ParseMethodIds parses the contract byte code to get all 4-bytes method ids
-func (p *ABIParser) ParseMethodIds(bytecode []byte) []MethodId {
-	// Single function calls will follow the following repeating pattern:
-	// DUP1
-	// PUSH4 <4-byte function signature>
-	// EQ
-	// PUSH2 <jumpdestination for the function>
-	// JUMPI
-	return nil
+func (p *ABIParser) isImplemented(intf Interface, sigs []MethodId) bool {
+	methodMap := make(map[string]bool)
+	for _, method := range intf.Methods {
+		methodMap[string(method.ID)] = true
+	}
+
+	for _, id := range sigs {
+		if !methodMap[string(id[:])] {
+			return false
+		}
+	}
+	return true
 }
 
-func (p *ABIParser) GetMethodById(methodId MethodId) []abi.Method {
-	return nil
-}
-
-// GetInterfaces
-func (p *ABIParser) GetInterfaces(methodIds []MethodId) []Interface {
-	return nil
+// GetInterfaces get all implemented interfaces of the given list of method ids
+func (p *ABIParser) GetInterfaces(ids []MethodId) []Interface {
+	ret := make([]Interface, 0)
+	for _, intf := range p.interfaces {
+		if p.isImplemented(intf, ids) {
+			ret = append(ret, intf)
+		}
+	}
+	return ret
 }
 
 func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
