@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
-
-	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 func TestParseMethodIds(t *testing.T) {
-	data, err := os.ReadFile("./tests/erc20.bin")
+	data, err := os.ReadFile("./tests/example.bin")
 	if err != nil {
 		panic(err)
 	}
@@ -21,6 +19,6 @@ func TestParseMethodIds(t *testing.T) {
 
 	methodIds := ParseMethodIds(bytecode)
 	for _, id := range methodIds {
-		fmt.Println(hexutil.Bytes(id[:]))
+		fmt.Println(id)
 	}
 }

@@ -1,39 +1,21 @@
 package abiutils
 
 import (
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/status-im/keycard-go/hexutils"
 )
 
-type MethodId [4]byte
-
-func (id MethodId) String() string {
-	return hexutils.BytesToHex(id[:])
-}
-
-func (id MethodId) UnmarshalJSON(data []byte) error {
-	val, err := hex.DecodeString(string(data))
-	if err != nil {
-		return err
-	}
-	copy(id[:], val)
-	return nil
-}
-
-func HexToMethodId(s string) MethodId {
-	id := MethodId{}
-	copy(id[:], hexutils.HexToBytes(s))
-	return id
-}
+// privateABI is an alias for the abi.ABI type and
+// is used to prevent modification of the embedded abi.ABI field in a struct
+type privateABI = abi.ABI
 
 type Interface struct {
-	abi.ABI
+	privateABI
 	Name string
 }
 
@@ -48,8 +30,8 @@ func NewInterface(name string, entries []ABIEntry) (Interface, error) {
 		}
 	}
 	return Interface{
-		ABI:  abi.ABI{Methods: methods},
-		Name: name,
+		privateABI: abi.ABI{Methods: methods},
+		Name:       name,
 	}, nil
 }
 
@@ -119,40 +101,78 @@ func (e *ABIEntry) getSig() string {
 	return fmt.Sprintf("%v(%v)", e.Name, strings.Join(types, ","))
 }
 
-func sigToID(sig string) MethodId {
-	id := MethodId{}
+func sigToID(sig string) []byte {
+	id := make([]byte, 4)
 	hash := crypto.Keccak256([]byte(sig))
-	copy(id[:], hash[:4])
+	copy(id[:], hash[:])
 	return id
 }
 
 // Contract holds information about a contract such as name, implemented interfaces,
 // methods owned by the contract itself.
 type Contract struct {
-	abi.ABI
-	Name       string                // Name of the contract
-	Implements map[string]Interface  // Known interfaces that the contract implemented
-	OwnMethods map[string]abi.Method // Methods owned by contract itself only, not included in any interfaces
+	privateABI
+	Name       string                 // Name of the contract
+	Implements map[string]Interface   // Known interfaces that the contract implemented
+	OwnMethods map[string]abi.Method  // Methods owned by contract itself only, not included in any interfaces
+	Unknown    map[string]interface{} // Unknown ABI entries
 }
 
-func (c *Contract) Interface(name string) (Interface, bool) {
-	impl, ok := c.Implements[name]
-	return impl, ok
+func (c *Contract) Interface(name string) Interface {
+	return c.Implements[name]
 }
 
-func (c *Contract) MethodById(id MethodId) (*abi.Method, error) {
-	return nil, nil
-}
-
-func (c *Contract) Pack(name string, v ...interface{}) {
-}
-
-func (c *Contract) Unpack(name string, data []byte) ([]interface{}, error) {
-	return nil, nil
-}
-
-func NewContract(name string, abi *abi.ABI) *Contract {
-	return &Contract{
-		Name: name,
+func NewContract(name string, entries []ABIEntry, ifs []Interface) (*Contract, error) {
+	unknown := make(map[string]interface{})
+	ownMethods := make(map[string]abi.Method)
+	contractABI := abi.ABI{}
+	for _, field := range entries {
+		switch field.Type {
+		case "constructor":
+			contractABI.Constructor = abi.NewMethod("", "", abi.Constructor, field.StateMutability, false, false, field.Inputs, nil)
+		case "function":
+			name := abi.ResolveNameConflict(field.Name, func(s string) bool { _, ok := contractABI.Methods[s]; return ok })
+			method := abi.NewMethod(name, field.Name, abi.Function, field.StateMutability, false, false, field.Inputs, field.Outputs)
+			contractABI.Methods[name] = method
+			ownMethods[name] = method
+		case "fallback":
+			// New introduced function type in v0.6.0, check more detail
+			// here https://solidity.readthedocs.io/en/v0.6.0/contracts.html#fallback-function
+			if contractABI.HasFallback() {
+				return nil, errors.New("only single fallback is allowed")
+			}
+			contractABI.Fallback = abi.NewMethod("", "", abi.Fallback, field.StateMutability, false, false, nil, nil)
+		case "receive":
+			// New introduced function type in v0.6.0, check more detail
+			// here https://solidity.readthedocs.io/en/v0.6.0/contracts.html#fallback-function
+			if contractABI.HasReceive() {
+				return nil, errors.New("only single receive is allowed")
+			}
+			if field.StateMutability != "payable" {
+				return nil, errors.New("the statemutability of receive can only be payable")
+			}
+			contractABI.Receive = abi.NewMethod("", "", abi.Receive, field.StateMutability, false, false, nil, nil)
+		case "event":
+			name := abi.ResolveNameConflict(field.Name, func(s string) bool { _, ok := contractABI.Events[s]; return ok })
+			contractABI.Events[name] = abi.NewEvent(name, field.Name, field.Anonymous, field.Inputs)
+		case "error":
+			// Errors cannot be overloaded or overridden but are inherited,
+			// no need to resolve the name conflict here.
+			contractABI.Errors[field.Name] = abi.NewError(field.Name, field.Inputs)
+		default:
+			unknown[field.Name] = field
+		}
 	}
+	impls := make(map[string]Interface)
+	for _, item := range ifs {
+		impls[item.Name] = item
+		for _, method := range item.Methods {
+			contractABI.Methods[method.Name] = method
+		}
+	}
+	return &Contract{
+		privateABI: contractABI,
+		Implements: impls,
+		Unknown:    unknown,
+	}, nil
 }
