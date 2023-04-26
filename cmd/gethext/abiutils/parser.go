@@ -202,6 +202,9 @@ func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
 
 func loadInterfaces(db ethdb.Database) map[string]Interface {
 	interfaces := make(map[string]Interface)
+	for name, intf := range defaultInterfaces {
+		interfaces[name] = intf
+	}
 	rawIfs := readInterfaceABIs(db)
 	for _, rawIf := range rawIfs {
 		item, err := NewInterface(rawIf.Name, rawIf.ABI)
