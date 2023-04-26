@@ -62,7 +62,8 @@ type AccountInfo struct {
 // ContractInfo is additional data for account if it's a contract
 type ContractInfo struct {
 	Interfaces []string       // List of interface names the contract implemented
-	OwnMethods []string       // List of methods excluded from implemented intefaces
+	MethodSigs []string       // List of 4-bytes method signatures in contract
+	OwnABI     []byte         // JSON ABI which elements are excluded from implemented intefaces
 	Creator    common.Address // Contract creator address
 }
 

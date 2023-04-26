@@ -57,6 +57,12 @@ func (list *abiList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func UnmarshalABI(data []byte) ([]ABIEntry, error) {
+	list := abiList{}
+	err := json.Unmarshal(data, &list)
+	return list, err
+}
+
 func readFourBytesABIs(db ethdb.Database, fourbytes []byte) abiList {
 	ret := abiList{}
 	data := extdb.ReadFourBytesABIs(db, fourbytes)

@@ -3,18 +3,20 @@ package monitor
 import (
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 )
 
 type blockParser struct {
-	data   *blockIndexData
-	txAccs []AccountDetail // contracts created after transaction finished
+	abiParser abiutils.ABIParser
+	data      *blockIndexData
+	txAccs    []AccountDetail // contracts created after transaction finished
 }
 
 func (p *blockParser) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
-	// fmt.Printf("tx: %#v\n", ctx.Transaction.Hash())
 	p.txAccs = make([]AccountDetail, 0)
 }
 
@@ -38,16 +40,29 @@ func (p *blockParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
 func (p *blockParser) OnCallEnter(ctx *reexec.CallCtx) {
 }
 
+func (p *blockParser) createContractInfo(creator common.Address, bytecode []byte) *ContractInfo {
+	ids := abiutils.ParseMethodIds(bytecode)
+	ifs, methods := p.abiParser.GetInterfaces(ids)
+	ifnames := make([]string, len(ifs))
+	for i, intf := range ifs {
+		ifnames[i] = intf.Name
+	}
+	return &ContractInfo{
+		Interfaces: ifnames,
+		MethodSigs: methods,
+		Creator:    creator,
+	}
+}
+
 func (p *blockParser) OnCallExit(ctx *reexec.CallCtx) {
 	if ctx.Error == nil {
 		return
 	}
 	if ctx.Type == vm.CREATE || ctx.Type == vm.CREATE2 {
-		p.data.SetContractInfo(ctx.To, &ContractInfo{Creator: ctx.From})
 		p.txAccs = append(p.txAccs, AccountDetail{
 			Address:      ctx.To,
 			AccountInfo:  &AccountInfo{FirstTx: ctx.Transaction.Hash()},
-			ContractInfo: &ContractInfo{Creator: ctx.From},
+			ContractInfo: p.createContractInfo(ctx.From, ctx.Input),
 		})
 	}
 }

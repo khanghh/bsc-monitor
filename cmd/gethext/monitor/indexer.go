@@ -78,13 +78,13 @@ func (idx *ChainIndexer) commitIndexData() {
 	}
 	extdb.WriteLastIndexBlock(idx.diskdb, idx.lastBlock.Hash())
 	if err := batch.Write(); err != nil {
-		log.Crit("Faield to commit index data", "blocks", len(idx.indexData), "segment", []uint64{first, last}, "error", err)
+		log.Crit("Failed to commit index data", "blocks", len(idx.indexData), "segment", []uint64{first, last}, "error", err)
 	}
 	numBlock := len(idx.indexData)
 	elapsed := time.Since(start)
 	dirty := common.StorageSize(batch.ValueSize())
 	idx.indexData = make([]*blockIndexData, 0)
-	log.Info("Persisted indexing data", "blocks", numBlock, "segment", []uint64{first, last}, "accounts", numAccount, "dirty", dirty, "elapsed", elapsed)
+	log.Info("Persisted index data", "blocks", numBlock, "segment", []uint64{first, last}, "accounts", numAccount, "dirty", dirty, "elapsed", elapsed)
 }
 
 func (idx *ChainIndexer) indexingLoop() {
