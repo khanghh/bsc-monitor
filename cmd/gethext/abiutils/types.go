@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // privateABI is an alias for the abi.ABI type and
@@ -25,6 +24,7 @@ func NewInterface(name string, entries []ABIEntry) (Interface, error) {
 		switch entry.Type {
 		case "function":
 			methods[entry.Name] = abi.NewMethod(name, entry.Name, abi.Function, entry.StateMutability, false, false, entry.Inputs, entry.Outputs)
+		case "event":
 		default:
 			return Interface{}, fmt.Errorf("invalid abi entry type: %v", entry.Type)
 		}
@@ -99,13 +99,6 @@ func (e *ABIEntry) getSig() string {
 		types[i] = arg.Type.String()
 	}
 	return fmt.Sprintf("%v(%v)", e.Name, strings.Join(types, ","))
-}
-
-func sigToID(sig string) []byte {
-	id := make([]byte, 4)
-	hash := crypto.Keccak256([]byte(sig))
-	copy(id[:], hash[:])
-	return id
 }
 
 // Contract holds information about a contract such as name, implemented interfaces,
