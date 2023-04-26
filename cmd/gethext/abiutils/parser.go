@@ -1,11 +1,15 @@
 package abiutils
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/asm"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -55,7 +59,7 @@ func ParseMethodSig(str string) (ABIEntry, error) {
 		}
 	}
 	if len(matches) == 4 {
-		if outputs, err = parseArguments(matches[2]); err != nil {
+		if outputs, err = parseArguments(matches[3]); err != nil {
 			return ABIEntry{}, err
 		}
 	}
@@ -74,8 +78,7 @@ func ParseMethodSig(str string) (ABIEntry, error) {
 // EQ
 // PUSH2 <jumpdestination for the function>
 // JUMPI
-func ParseMethodIds(bytecode []byte) []MethodId {
-	ret := []MethodId{}
+func ParseMethodIds(bytecode []byte) []string {
 	pattern := []vm.OpCode{vm.DUP1, vm.PUSH4, 0x00, vm.PUSH2, vm.JUMPI}
 	matchPattern := func(ins []vm.OpCode) bool {
 		if len(ins) < len(pattern) {
@@ -89,36 +92,36 @@ func ParseMethodIds(bytecode []byte) []MethodId {
 		}
 		return true
 	}
+
+	methodIds := map[string]bool{}
 	push4Args := [4]byte{}
 	inJumpTable := false
-	instructions := []vm.OpCode{}
+	instructions := make([]vm.OpCode, 0, 64)
+
 	it := asm.NewInstructionIterator(bytecode)
 	for it.Next() {
+		op := it.Op()
 		instructions = append(instructions, it.Op())
-		if it.Op() == vm.CALLDATALOAD && !inJumpTable {
+		if op == vm.CALLDATALOAD && !inJumpTable {
 			inJumpTable = true
 		}
 		if inJumpTable {
-			if it.Op() == vm.PUSH4 {
+			switch op {
+			case vm.PUSH4:
 				copy(push4Args[:], it.Arg())
-			}
-			if it.Op() == vm.JUMPI && matchPattern(instructions) {
-				exited := false
-				for _, id := range ret {
-					if id == push4Args {
-						exited = true
-						break
-					}
+			case vm.JUMPI:
+				if matchPattern(instructions) {
+					methodIds[common.Bytes2Hex(push4Args[:])] = true
+					instructions = instructions[:0]
 				}
-				if !exited {
-					ret = append(ret, push4Args)
-				}
-				instructions = []vm.OpCode{}
-			}
-			if it.Op() == vm.REVERT {
+			case vm.REVERT:
 				break
 			}
 		}
+	}
+	ret := make([]string, 0, len(methodIds))
+	for key := range methodIds {
+		ret = append(ret, key)
 	}
 	return ret
 }
@@ -129,7 +132,20 @@ type ABIParser struct {
 	interfaces map[string]Interface
 }
 
-func (p *ABIParser) isImplemented(intf Interface, sigs []MethodId) bool {
+func (p *ABIParser) LookupFourBytes(id string) []ABIEntry {
+	common.FromHex(id)
+	data := extdb.ReadFourBytesABIs(p.db, common.FromHex(id))
+	if len(data) == 0 {
+		return nil
+	}
+	ret := []ABIEntry{}
+	if err := json.Unmarshal(data, &ret); err != nil {
+		log.Debug("Look up 4-bytes error", "id", hexutil.Bytes(id[:]), "error", err)
+	}
+	return ret
+}
+
+func (p *ABIParser) isImplemented(intf Interface, sigs []string) bool {
 	methodMap := make(map[string]bool)
 	for _, method := range intf.Methods {
 		methodMap[string(method.ID)] = true
@@ -144,18 +160,44 @@ func (p *ABIParser) isImplemented(intf Interface, sigs []MethodId) bool {
 }
 
 // GetInterfaces get all implemented interfaces of the given list of method ids
-func (p *ABIParser) GetInterfaces(ids []MethodId) []Interface {
-	ret := make([]Interface, 0)
+// returns list of matched interfaces and list of unkown method ids
+func (p *ABIParser) GetInterfaces(ids []string) ([]Interface, []string) {
+	implements := []Interface{}
+	ifMethods := map[string]bool{}
 	for _, intf := range p.interfaces {
-		if p.isImplemented(intf, ids) {
-			ret = append(ret, intf)
+		if !p.isImplemented(intf, ids) {
+			continue
+		}
+		implements = append(implements, intf)
+		for _, method := range intf.Methods {
+			ifMethods[common.Bytes2Hex(method.ID)] = true
 		}
 	}
-	return ret
+	unknownMethods := []string{}
+	for _, item := range ids {
+		if !ifMethods[item] {
+			unknownMethods = append(unknownMethods, item)
+		}
+	}
+	return implements, unknownMethods
 }
 
 func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
-	return nil, nil
+	ids := ParseMethodIds(bytecode)
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("empty contract")
+	}
+	ifs, methodIds := p.GetInterfaces(ids)
+	entries := []ABIEntry{}
+	for _, id := range methodIds {
+		items := p.LookupFourBytes(id)
+		if len(items) > 0 {
+			entries = append(entries, items...)
+		} else {
+			entries = append(entries, ABIEntry{Name: id})
+		}
+	}
+	return NewContract("", entries, ifs)
 }
 
 func loadInterfaces(db ethdb.Database) map[string]Interface {
