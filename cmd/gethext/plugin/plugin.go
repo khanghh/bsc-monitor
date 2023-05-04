@@ -15,7 +15,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/cmd/gethext/model"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/task"
 	"github.com/ethereum/go-ethereum/common"
@@ -106,11 +105,6 @@ type MonitorBackend interface {
 	UnregisterProcessor(name string)
 }
 
-type ChainIndexer interface {
-	GetAccount(addr common.Address) (*model.AccountInfo, error)
-	GetAccountAt(root common.Hash, addr common.Address) (*model.AccountInfo, error)
-}
-
 type TaskManager interface {
 	AddTask(name string, task task.Task) error
 	RunTask(name string, task task.Task) error
@@ -124,7 +118,6 @@ type sharedCtx struct {
 	Node    *node.Node
 	Eth     EthBackend
 	Monitor MonitorBackend
-	Indexer ChainIndexer
 	TaskMgr TaskManager
 	Storage map[string]interface{}
 	mtx     sync.RWMutex
