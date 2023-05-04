@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?$`)
@@ -45,25 +46,25 @@ func parseArguments(str string) (abi.Arguments, error) {
 }
 
 // ParseMethodSig parses method identifier string into abi.Method
-func ParseMethodSig(str string) (ABIEntry, error) {
+func ParseMethodSig(str string) (ABIElement, error) {
 	matches := methodSigRegex.FindStringSubmatch(str)
 	if matches == nil || len(matches) < 2 {
-		return ABIEntry{}, fmt.Errorf("invalid method signature")
+		return ABIElement{}, fmt.Errorf("invalid method signature")
 	}
 	name := matches[1]
 	var inputs, outputs abi.Arguments
 	var err error
 	if len(matches) > 2 {
 		if inputs, err = parseArguments(matches[2]); err != nil {
-			return ABIEntry{}, err
+			return ABIElement{}, err
 		}
 	}
 	if len(matches) == 4 {
 		if outputs, err = parseArguments(matches[3]); err != nil {
-			return ABIEntry{}, err
+			return ABIElement{}, err
 		}
 	}
-	return ABIEntry{
+	return ABIElement{
 		Type:    "function",
 		Name:    name,
 		Inputs:  inputs,
@@ -128,20 +129,30 @@ func ParseMethodIds(bytecode []byte) []string {
 
 // ABIParser parses all methods in contracts and detects which interfaces the contract was implemented
 type ABIParser struct {
-	db         ethdb.Database
-	interfaces map[string]Interface
+	db              ethdb.Database
+	interfaces      map[string]Interface
+	fourbyetesCache lru.Cache
 }
 
-func (p *ABIParser) LookupFourBytes(id string) []ABIEntry {
-	common.FromHex(id)
+func (p *ABIParser) LookupFourBytes(id string) []ABIElement {
+	if cached, ok := p.fourbyetesCache.Get(id); ok {
+		return cached.([]ABIElement)
+	}
+	ret := []ABIElement{}
 	data := extdb.ReadFourBytesABIs(p.db, common.FromHex(id))
 	if len(data) == 0 {
 		return nil
 	}
-	ret := []ABIEntry{}
 	if err := json.Unmarshal(data, &ret); err != nil {
 		log.Debug("Look up 4-bytes error", "id", hexutil.Bytes(id[:]), "error", err)
 	}
+	// TODO(khanghh): remove duplicate items
+	for _, intf := range p.interfaces {
+		if elem, exist := intf.Elements[id]; exist {
+			ret = append(ret, elem)
+		}
+	}
+	p.fourbyetesCache.Add(id, ret)
 	return ret
 }
 
@@ -188,13 +199,13 @@ func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
 		return nil, fmt.Errorf("empty contract")
 	}
 	ifs, methodIds := p.GetInterfaces(ids)
-	entries := []ABIEntry{}
+	entries := []ABIElement{}
 	for _, id := range methodIds {
 		items := p.LookupFourBytes(id)
 		if len(items) > 0 {
 			entries = append(entries, items...)
 		} else {
-			entries = append(entries, ABIEntry{Name: id})
+			entries = append(entries, ABIElement{Name: id})
 		}
 	}
 	return NewContract("", entries, ifs)
@@ -218,9 +229,9 @@ func loadInterfaces(db ethdb.Database) map[string]Interface {
 	return interfaces
 }
 
-func NewParser(db ethdb.Database) (*ABIParser, error) {
+func NewParser(db ethdb.Database) *ABIParser {
 	return &ABIParser{
 		db:         db,
 		interfaces: loadInterfaces(db),
-	}, nil
+	}
 }
