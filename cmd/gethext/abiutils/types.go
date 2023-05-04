@@ -7,31 +7,44 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// FourBytesSigOf calculate 4-bytes signature from given text
+func FourBytesSigOf(sig string) string {
+	return common.Bytes2Hex(crypto.Keccak256([]byte(sig))[:4])
+}
 
 // privateABI is an alias for the abi.ABI type and
 // is used to prevent modification of the embedded abi.ABI field in a struct
 type privateABI = abi.ABI
 
 type Interface struct {
-	privateABI
-	Name string
+	privateABI                       // embeded abi struct
+	Name       string                // interface name
+	Elements   map[string]ABIElement // map from 4-bytes to abi element
 }
 
-func NewInterface(name string, entries []ABIEntry) (Interface, error) {
+func NewInterface(name string, elems []ABIElement) (Interface, error) {
 	methods := make(map[string]abi.Method)
-	for _, entry := range entries {
-		switch entry.Type {
+	events := make(map[string]abi.Event)
+	elements := make(map[string]ABIElement)
+	for _, item := range elems {
+		switch item.Type {
 		case "function":
-			methods[entry.Name] = abi.NewMethod(name, entry.Name, abi.Function, entry.StateMutability, false, false, entry.Inputs, entry.Outputs)
+			methods[item.Name] = abi.NewMethod(name, item.Name, abi.Function, item.StateMutability, false, false, item.Inputs, item.Outputs)
+			elements[FourBytesSigOf(item.Identifier())] = item
 		case "event":
+			events[name] = abi.NewEvent(name, item.Name, item.Anonymous, item.Inputs)
 		default:
-			return Interface{}, fmt.Errorf("invalid abi entry type: %v", entry.Type)
+			return Interface{}, fmt.Errorf("invalid abi entry type: %v", item.Type)
 		}
 	}
 	return Interface{
-		privateABI: abi.ABI{Methods: methods},
+		privateABI: abi.ABI{Methods: methods, Events: events},
 		Name:       name,
+		Elements:   elements,
 	}, nil
 }
 
@@ -52,7 +65,7 @@ type argumentMarshaling struct {
 	Indexed      bool                 `json:"indexed,omitempty"`
 }
 
-type ABIEntry struct {
+type ABIElement struct {
 	Type    string
 	Name    string
 	Inputs  []abi.Argument
@@ -67,7 +80,7 @@ type ABIEntry struct {
 	Anonymous bool
 }
 
-func (e *ABIEntry) MarshalJSON() ([]byte, error) {
+func (e *ABIElement) MarshalJSON() ([]byte, error) {
 	marshaling := abiEntryMarshaling{
 		Type:            e.Type,
 		Name:            e.Name,
@@ -93,7 +106,7 @@ func (e *ABIEntry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(marshaling)
 }
 
-func (e *ABIEntry) getSig() string {
+func (e *ABIElement) Identifier() string {
 	types := make([]string, len(e.Inputs))
 	for i, arg := range e.Inputs {
 		types[i] = arg.Type.String()
@@ -108,18 +121,22 @@ type Contract struct {
 	Name       string                 // Name of the contract
 	Implements map[string]Interface   // Known interfaces that the contract implemented
 	OwnMethods map[string]abi.Method  // Methods owned by contract itself only, not included in any interfaces
-	Unknown    map[string]interface{} // Unknown ABI entries
+	Unknown    map[string]interface{} // Unknown ABI elements
 }
 
-func (c *Contract) Interface(name string) Interface {
-	return c.Implements[name]
+func (c *Contract) Interface(name string) *Interface {
+	inft, ok := c.Implements[name]
+	if ok {
+		return &inft
+	}
+	return nil
 }
 
-func NewContract(name string, entries []ABIEntry, ifs []Interface) (*Contract, error) {
+func NewContract(name string, elems []ABIElement, ifs []Interface) (*Contract, error) {
 	unknown := make(map[string]interface{})
 	ownMethods := make(map[string]abi.Method)
 	contractABI := abi.ABI{}
-	for _, field := range entries {
+	for _, field := range elems {
 		switch field.Type {
 		case "constructor":
 			contractABI.Constructor = abi.NewMethod("", "", abi.Constructor, field.StateMutability, false, false, field.Inputs, nil)
