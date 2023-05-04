@@ -81,7 +81,7 @@ func (s *EthExplorer) Stop() error {
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
-	log.Info("Chain monitor service stopped")
+	log.Info("Chain explorer service stopped")
 	return nil
 }
 
