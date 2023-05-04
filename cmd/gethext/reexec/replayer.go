@@ -7,6 +7,7 @@
 package reexec
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -55,7 +56,7 @@ func (re *ChainReplayer) Reset() {
 }
 
 // StateAtBlock returns statedb after all transactions in block was executed
-func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateDB, err error) {
+func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (statedb *state.StateDB, err error) {
 	statedb, err = state.New(block.Root(), re.db, nil)
 	if err == nil {
 		return statedb, nil
@@ -93,6 +94,11 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 	)
 	blockNum := block.NumberU64()
 	for current.NumberU64() < blockNum {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 		if time.Since(logged) > 8*time.Second {
 			log.Info("Regenerating historical state", "current", current.NumberU64()+1, "target", blockNum, "remaining", blockNum-current.NumberU64()-1, "elapsed", time.Since(start))
 			logged = time.Now()
@@ -101,9 +107,14 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 		if current = re.bc.GetBlockByNumber(next); current == nil {
 			return nil, fmt.Errorf("block #%d not found", next)
 		}
+		start := time.Now()
 		statedb, _, _, _, err = re.bc.Processor().Process(current, statedb, vm.Config{})
 		if err != nil {
 			return nil, err
+		}
+		elapsed := time.Since(start)
+		if elapsed > time.Second {
+			log.Warn(fmt.Sprintf("Regenerating historical state at block %d took %v", current.NumberU64(), elapsed))
 		}
 		statedb.SetExpectedStateRoot(current.Root())
 		statedb.Finalise(re.bc.Config().IsEIP158(current.Number()))
@@ -120,7 +131,7 @@ func (re *ChainReplayer) StateAtBlock(block *types.Block) (statedb *state.StateD
 }
 
 // StateAtTransaction returns the state before transaction was executed
-func (re *ChainReplayer) StateAtTransaction(block *types.Block, txIndex uint64) (core.Message, vm.BlockContext, *state.StateDB, error) {
+func (re *ChainReplayer) StateAtTransaction(ctx context.Context, block *types.Block, txIndex uint64) (core.Message, vm.BlockContext, *state.StateDB, error) {
 	// Short circuit if it's genesis block.
 	if block.NumberU64() == 0 {
 		return nil, vm.BlockContext{}, nil, errors.New("no transaction in genesis")
@@ -131,7 +142,7 @@ func (re *ChainReplayer) StateAtTransaction(block *types.Block, txIndex uint64) 
 		return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
 	}
 	// Get statedb of parent block to apply transactions
-	statedb, err := re.StateAtBlock(parent)
+	statedb, err := re.StateAtBlock(ctx, parent)
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, err
 	}
@@ -171,7 +182,7 @@ func (re *ChainReplayer) StateAtTransaction(block *types.Block, txIndex uint64) 
 }
 
 // ReplayBlock re-execute all transactions in provided block, if base state not provided, base state will be generated instead
-func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, hook ReExecHook) (*state.StateDB, error) {
+func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, base *state.StateDB, hook ReExecHook) (*state.StateDB, error) {
 	if block.NumberU64() == 0 {
 		return nil, errors.New("cannot replay genesis block")
 	}
@@ -181,7 +192,7 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 		if parent == nil {
 			return nil, fmt.Errorf("missing parent block %#x %d", block.ParentHash(), block.NumberU64()-1)
 		}
-		base, err = re.StateAtBlock(parent)
+		base, err = re.StateAtBlock(ctx, parent)
 		if err != nil {
 			return nil, fmt.Errorf("missing base state: %v", err)
 		}
@@ -205,13 +216,13 @@ func (re *ChainReplayer) ReplayBlock(block *types.Block, base *state.StateDB, ho
 }
 
 // ReplayTransaction re-execute transaction at the provided index in a block
-func (re *ChainReplayer) ReplayTransaction(block *types.Block, txIndex uint64, hook ReExecHook) (*state.StateDB, error) {
+func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Block, txIndex uint64, hook ReExecHook) (*state.StateDB, error) {
 	transactions := block.Transactions()
 	if txIndex >= uint64(len(transactions)) {
 		return nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash())
 	}
 	tx := transactions[txIndex]
-	msg, blkCtx, statedb, err := re.StateAtTransaction(block, txIndex)
+	msg, blkCtx, statedb, err := re.StateAtTransaction(ctx, block, txIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieving state at tx index %d in block %d: %v", txIndex, block.NumberU64(), err)
 	}
