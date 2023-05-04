@@ -19,6 +19,8 @@ import (
 
 var methodSigRegex = regexp.MustCompile(`(\w+)\(([^\(\)]*)\)(?:\s*returns\s*\(([^\(\)]*)\))?$`)
 
+const fourbytesCacheSize = 1024
+
 func parseArguments(str string) (abi.Arguments, error) {
 	args := make(abi.Arguments, 0)
 	if len(str) == 0 {
@@ -129,13 +131,13 @@ func ParseMethodIds(bytecode []byte) []string {
 
 // ABIParser parses all methods in contracts and detects which interfaces the contract was implemented
 type ABIParser struct {
-	db              ethdb.Database
-	interfaces      map[string]Interface
-	fourbyetesCache lru.Cache
+	db             ethdb.Database
+	interfaces     map[string]Interface
+	fourbytesCache *lru.Cache
 }
 
 func (p *ABIParser) LookupFourBytes(id string) []ABIElement {
-	if cached, ok := p.fourbyetesCache.Get(id); ok {
+	if cached, ok := p.fourbytesCache.Get(id); ok {
 		return cached.([]ABIElement)
 	}
 	ret := []ABIElement{}
@@ -152,7 +154,7 @@ func (p *ABIParser) LookupFourBytes(id string) []ABIElement {
 			ret = append(ret, elem)
 		}
 	}
-	p.fourbyetesCache.Add(id, ret)
+	p.fourbytesCache.Add(id, ret)
 	return ret
 }
 
@@ -230,8 +232,10 @@ func loadInterfaces(db ethdb.Database) map[string]Interface {
 }
 
 func NewParser(db ethdb.Database) *ABIParser {
+	abiCache, _ := lru.New(fourbytesCacheSize)
 	return &ABIParser{
-		db:         db,
-		interfaces: loadInterfaces(db),
+		db:             db,
+		interfaces:     loadInterfaces(db),
+		fourbytesCache: abiCache,
 	}
 }
