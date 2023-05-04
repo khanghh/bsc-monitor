@@ -27,13 +27,8 @@ func (list *ABIElements) addUnique(item ABIElement) bool {
 }
 
 func (list *ABIElements) UnmarshalJSON(data []byte) error {
-	var (
-		entry ABIElement
-		err   error
-	)
-
 	if text, err := strconv.Unquote(string(data)); err == nil {
-		if entry, err = ParseMethodSig(text); err == nil {
+		if entry, err := ParseMethodSig(text); err == nil {
 			*list = append(*list, entry)
 		}
 		return nil
@@ -44,6 +39,10 @@ func (list *ABIElements) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	for _, raw := range rawEntries {
+		var (
+			entry ABIElement
+			err   error
+		)
 		if text, qerr := strconv.Unquote(string(raw)); qerr == nil {
 			entry, err = ParseMethodSig(text)
 		} else {
