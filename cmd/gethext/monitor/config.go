@@ -12,9 +12,7 @@ import (
 
 var (
 	DefaultMonitorConfig = MonitorConfig{
-		ProcessQueue: 10000,
-		ProcessSlot:  1000,
-		Enabled:      false,
+		Enabled: false,
 	}
 	DefaultIndexerConfig = IndexerConfig{
 		Cache:   16, // Cache memory in MB for chain replayer
@@ -23,20 +21,10 @@ var (
 )
 
 type MonitorConfig struct {
-	ProcessQueue int
-	ProcessSlot  int
-	Enabled      bool
+	Enabled bool
 }
 
 func (cfg *MonitorConfig) Sanitize() error {
-	if cfg.ProcessQueue < 1 {
-		log.Warn("Sanitizing monitor process txs queue", "provided", cfg.ProcessQueue, "updated", DefaultMonitorConfig.ProcessQueue)
-		cfg.ProcessQueue = DefaultMonitorConfig.ProcessQueue
-	}
-	if cfg.ProcessSlot < 1 {
-		log.Warn("Sanitizing monitor process txs slot", "provided", cfg.ProcessSlot, "updated", DefaultMonitorConfig.ProcessSlot)
-		cfg.ProcessSlot = DefaultMonitorConfig.ProcessSlot
-	}
 	return nil
 }
 
