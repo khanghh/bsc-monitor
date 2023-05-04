@@ -7,6 +7,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -49,7 +50,7 @@ func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB
 	if idx.lastBlock.Root() == block.Root() {
 		return statedb, data, nil
 	}
-	statedb, err := idx.replayer.ReplayBlock(block, statedb, newBlockParser(data))
+	statedb, err := idx.replayer.ReplayBlock(context.Background(), block, statedb, newBlockParser(data))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -111,7 +112,7 @@ func (idx *ChainIndexer) indexingLoop() {
 		}
 		log.Debug("Indexing block", "number", block.NumberU64())
 		if statedb == nil {
-			statedb, err = idx.replayer.StateAtBlock(idx.lastBlock)
+			statedb, err = idx.replayer.StateAtBlock(context.Background(), idx.lastBlock)
 			if err != nil {
 				log.Error("Could not get historical state", "number", idx.lastBlock.NumberU64(), "root", idx.lastBlock.Root())
 				return
