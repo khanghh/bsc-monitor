@@ -14,11 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-type abiList []ABIEntry
+type ABIElements []ABIElement
 
-func (list *abiList) addUnique(item ABIEntry) bool {
+func (list *ABIElements) addUnique(item ABIElement) bool {
 	for _, entry := range *list {
-		if item.getSig() == entry.getSig() {
+		if item.Identifier() == entry.Identifier() {
 			return false
 		}
 	}
@@ -26,9 +26,9 @@ func (list *abiList) addUnique(item ABIEntry) bool {
 	return true
 }
 
-func (list *abiList) UnmarshalJSON(data []byte) error {
+func (list *ABIElements) UnmarshalJSON(data []byte) error {
 	var (
-		entry ABIEntry
+		entry ABIElement
 		err   error
 	)
 
@@ -57,20 +57,20 @@ func (list *abiList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func UnmarshalABI(data []byte) ([]ABIEntry, error) {
-	list := abiList{}
+func UnmarshalABI(data []byte) ([]ABIElement, error) {
+	list := ABIElements{}
 	err := json.Unmarshal(data, &list)
 	return list, err
 }
 
-func readFourBytesABIs(db ethdb.Database, fourbytes []byte) abiList {
-	ret := abiList{}
+func readFourBytesABIs(db ethdb.Database, fourbytes []byte) ABIElements {
+	ret := ABIElements{}
 	data := extdb.ReadFourBytesABIs(db, fourbytes)
 	json.Unmarshal(data, &ret)
 	return ret
 }
 
-func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool) (int, error) {
+func import4BytesABIs(db ethdb.Database, abis map[string]ABIElements, override bool) (int, error) {
 	if len(abis) == 0 {
 		return 0, nil
 	}
@@ -81,24 +81,24 @@ func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool)
 		if err != nil {
 			continue
 		}
-		entries := list
+		elems := list
 		if !override {
-			entries = readFourBytesABIs(db, fourbytes)
+			elems = readFourBytesABIs(db, fourbytes)
 			modified := false
 			for _, entry := range list {
-				modified = entries.addUnique(entry) || modified
+				modified = elems.addUnique(entry) || modified
 			}
 			if !modified {
-				entries = nil
+				elems = nil
 			}
 		}
-		if len(entries) > 0 {
-			data, err := json.Marshal(entries)
+		if len(elems) > 0 {
+			data, err := json.Marshal(elems)
 			if err != nil {
 				return 0, err
 			}
 			extdb.WriteFourBytesABIs(db, fourbytes, data)
-			imported += len(entries)
+			imported += len(elems)
 		}
 	}
 	return imported, batch.Write()
@@ -106,8 +106,8 @@ func import4BytesABIs(db ethdb.Database, abis map[string]abiList, override bool)
 
 // rawInterface is data struct hold information about an contract interface to be stored in extdb
 type rawInterface struct {
-	Name string     `json:"name"` // Name of interface
-	ABI  []ABIEntry `json:"abi"`  // List of signatures fo methods, events, errors
+	Name string       `json:"name"` // Name of interface
+	ABI  []ABIElement `json:"abi"`  // List of signatures fo methods, events, errors
 }
 
 func readInterfaceABIs(db ethdb.Database) []rawInterface {
@@ -126,7 +126,7 @@ func readInterfaceABIs(db ethdb.Database) []rawInterface {
 	return ret
 }
 
-func importInterfaces(db ethdb.Database, ifs map[string]abiList, override bool) (int, int, error) {
+func importInterfaces(db ethdb.Database, ifs map[string]ABIElements, override bool) (int, int, error) {
 	batch := db.NewBatch()
 	importList := []rawInterface{}
 	for name, item := range ifs {
@@ -149,8 +149,8 @@ func importInterfaces(db ethdb.Database, ifs map[string]abiList, override bool) 
 func ImportABIsData(db ethdb.Database, reader io.Reader, override bool) error {
 	dec := json.NewDecoder(reader)
 	var data struct {
-		FourBytes  map[string]abiList `json:"4bytes"`     // 4-bytes sigs to abi list
-		Interfaces map[string]abiList `json:"interfaces"` // interface name to abi list
+		FourBytes  map[string]ABIElements `json:"4bytes"`     // 4-bytes sigs to abi list
+		Interfaces map[string]ABIElements `json:"interfaces"` // interface name to abi list
 	}
 	if err := dec.Decode(&data); err != nil {
 		return err

@@ -42,7 +42,7 @@ func TestAbiListUnmarshalJSON(t *testing.T) {
 		]
 	  }`
 
-	methodSigs := make(map[string]abiList)
+	methodSigs := make(map[string]ABIElements)
 	if err := json.Unmarshal([]byte(testData), &methodSigs); err != nil {
 		panic(err)
 	}
