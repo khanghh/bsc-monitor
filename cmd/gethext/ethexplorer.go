@@ -9,6 +9,7 @@ package main
 import (
 	"sync"
 
+	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/cmd/gethext/task"
@@ -101,6 +102,7 @@ func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethere
 		return nil, err
 	}
 
+	abiutils.InitDefaultParser(diskdb)
 	chainMonitor, err := monitor.NewChainMonitor(cfg.Monitor, diskdb, eth.BlockChain())
 	if err != nil {
 		return nil, err
