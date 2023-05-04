@@ -9,6 +9,7 @@ package monitor
 import (
 	"sync"
 
+	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,19 +20,41 @@ import (
 )
 
 type Processor interface {
-	ProcessTx(state *state.StateDB, tx *types.Transaction, block *types.Block) error
+	ProcessBlock(state *state.StateDB, block *types.Block, txResults []*reexec.TxContext) error
+}
+
+type monitorHook struct {
+	block *types.Block
+	txs   []*reexec.TxContext
+}
+
+func (h *monitorHook) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {}
+
+func (h *monitorHook) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
+	h.txs[int(ctx.TxIndex)] = ctx
+}
+
+func (h *monitorHook) OnCallEnter(ctx *reexec.CallCtx) {}
+
+func (h *monitorHook) OnCallExit(ctx *reexec.CallCtx) {}
+
+func newMonitorHook(block *types.Block) *monitorHook {
+	return &monitorHook{
+		block: block,
+		txs:   make([]*reexec.TxContext, block.Transactions().Len()),
+	}
 }
 
 // ChainMonitor calls registed processors to process every pending
 // transactions recieved in txpool
 type ChainMonitor struct {
-	config *MonitorConfig
-	eth    *eth.Ethereum
+	config   *MonitorConfig
+	eth      *eth.Ethereum
+	replayer *reexec.ChainReplayer
 
-	processors    map[string]Processor
-	newTxsSubs    event.Subscription
-	newTxsEventCh chan core.NewTxsEvent
-	queue         chan *types.Transaction
+	processors   map[string]Processor
+	chainHeadSub event.Subscription
+	chainHeadCh  chan core.ChainHeadEvent
 
 	wg     sync.WaitGroup
 	mtx    sync.Mutex
@@ -48,77 +71,43 @@ func (m *ChainMonitor) Processors() map[string]Processor {
 	return ret
 }
 
-func (m *ChainMonitor) processQueueLoop() {
-	throttler := NewLimitWaitGroup(m.config.ProcessSlot)
+func (m *ChainMonitor) processBlock(block *types.Block) {
+	hook := newMonitorHook(block)
+	statedb, err := m.replayer.ReplayBlock(block, nil, hook)
+	if err != nil {
+		return
+	}
+	for _, proc := range m.processors {
+		proc.ProcessBlock(statedb, block, hook.txs)
+	}
+}
+
+func (m *ChainMonitor) eventLoop() {
 	defer func() {
-		throttler.Wait()
 		m.wg.Done()
 	}()
-	processTx := func(throttler *LimitWaitGroup, tx *types.Transaction) {
-		defer throttler.Done()
-		state, err := m.eth.BlockChain().State()
-		if err != nil {
-			log.Error("Failed to get chain state", "error", err)
-			return
-		}
-		wg := sync.WaitGroup{}
-		for procName, proc := range m.Processors() {
-			wg.Add(1)
-			go func(procName string, proc Processor) {
-				defer wg.Done()
-				err := proc.ProcessTx(state, tx, nil)
-				log.Warn("Process pending transaction error", "processor", procName, "error", err)
-			}(procName, proc)
-		}
-		wg.Wait()
-	}
 	for {
 		select {
-		case tx := <-m.queue:
-			throttler.Add()
-			go processTx(throttler, tx)
+		case event := <-m.chainHeadCh:
+			m.processBlock(event.Block)
 		case <-m.quitCh:
 			return
 		}
 	}
 }
 
-func (m *ChainMonitor) enqueueTxsLoop() {
-	defer m.wg.Done()
-	m.queue = make(chan *types.Transaction, m.config.ProcessQueue)
-	for {
-		select {
-		case event := <-m.newTxsEventCh:
-			enqueued := 0
-			for _, tx := range event.Txs {
-				select {
-				case m.queue <- tx:
-					enqueued++
-				default:
-				}
-			}
-			log.Debug("Enqueue new pending txs to monitor", "count", enqueued, "received", len(event.Txs), "queued", len(m.queue))
-		case <-m.newTxsSubs.Err():
-			return
-		}
-	}
-}
-
 func (m *ChainMonitor) Start() error {
-	m.wg.Add(1)
-	m.newTxsEventCh = make(chan core.NewTxsEvent)
-	m.newTxsSubs = m.eth.TxPool().SubscribeNewTxsEvent(m.newTxsEventCh)
-	go m.enqueueTxsLoop()
-
-	m.wg.Add(1)
-	go m.processQueueLoop()
-	log.Info("Start monitoring blockchain")
+	m.chainHeadCh = make(chan core.ChainHeadEvent)
+	m.chainHeadSub = m.eth.BlockChain().SubscribeChainHeadEvent(m.chainHeadCh)
+	go m.eventLoop()
 	return nil
 }
 
 func (m *ChainMonitor) Stop() error {
 	close(m.quitCh)
-	m.newTxsSubs.Unsubscribe()
+	if m.chainHeadSub != nil {
+		m.chainHeadSub.Unsubscribe()
+	}
 	m.wg.Wait()
 	log.Info("ChainMonitor stopped")
 	return nil
