@@ -31,11 +31,13 @@ func NewInterface(name string, elems []ABIElement) (Interface, error) {
 	events := make(map[string]abi.Event)
 	elements := make(map[string]ABIElement)
 	for _, item := range elems {
+		elements[FourBytesSigOf(item.Identifier())] = item
 		switch item.Type {
 		case "function":
-			methods[item.Name] = abi.NewMethod(name, item.Name, abi.Function, item.StateMutability, false, false, item.Inputs, item.Outputs)
-			elements[FourBytesSigOf(item.Identifier())] = item
+			name := abi.ResolveNameConflict(item.Name, func(s string) bool { _, ok := methods[s]; return ok })
+			methods[name] = abi.NewMethod(name, item.Name, abi.Function, item.StateMutability, false, false, item.Inputs, item.Outputs)
 		case "event":
+			name := abi.ResolveNameConflict(item.Name, func(s string) bool { _, ok := events[s]; return ok })
 			events[name] = abi.NewEvent(name, item.Name, item.Anonymous, item.Inputs)
 		default:
 			return Interface{}, fmt.Errorf("invalid abi entry type: %v", item.Type)

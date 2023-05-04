@@ -160,12 +160,12 @@ func (p *ABIParser) LookupFourBytes(id string) []ABIElement {
 
 func (p *ABIParser) isImplemented(intf Interface, sigs []string) bool {
 	methodMap := make(map[string]bool)
-	for _, method := range intf.Methods {
-		methodMap[string(method.ID)] = true
+	for _, id := range sigs {
+		methodMap[id] = true
 	}
 
-	for _, id := range sigs {
-		if !methodMap[string(id[:])] {
+	for id, elem := range intf.Elements {
+		if elem.Type == "function" && !methodMap[id] {
 			return false
 		}
 	}
