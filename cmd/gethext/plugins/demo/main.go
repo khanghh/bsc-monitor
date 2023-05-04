@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -62,7 +63,7 @@ func (p *demoPlugin) execute(ctx *plugin.PluginCtx) {
 	)
 	for i := 93015; i <= 163454; i++ {
 		block := bc.GetBlockByNumber(uint64(i))
-		statedb, err = replayer.ReplayBlock(block, statedb, hook)
+		statedb, err = replayer.ReplayBlock(context.Background(), block, statedb, hook)
 		if err != nil {
 			panic(err)
 		}
