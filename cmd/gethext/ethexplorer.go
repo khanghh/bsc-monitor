@@ -81,7 +81,6 @@ func (s *EthExplorer) Stop() error {
 		close(s.quitCh)
 	}
 	s.quitLock.Unlock()
-	log.Info("Chain explorer service stopped")
 	return nil
 }
 
@@ -102,7 +101,7 @@ func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethere
 		return nil, err
 	}
 
-	chainMonitor, err := monitor.NewChainMonitor(cfg.Monitor, diskdb, eth)
+	chainMonitor, err := monitor.NewChainMonitor(cfg.Monitor, diskdb, eth.BlockChain())
 	if err != nil {
 		return nil, err
 	}
