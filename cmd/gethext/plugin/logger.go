@@ -46,6 +46,6 @@ func (l *logger) Crit(msg string, ctx ...interface{}) {
 	log.Root().Crit(fmt.Sprintf("[%s] %s", l.tag, msg), ctx...)
 }
 
-func newLogger(tag string) log.Logger {
+func NewLogger(tag string) log.Logger {
 	return &logger{tag}
 }
