@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"math/big"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
@@ -11,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -24,7 +27,7 @@ var (
 	logger                    log.Logger
 	IERC20                    *abiutils.Interface
 	bigETHTransferThreshold   = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
-	bigTokenTransferThreshold = map[common.Address]uint64{
+	bigERC20TransferThreshold = map[common.Address]uint64{
 		common.HexToAddress("0xA3183498b579bd228aa2B62101C40CC1da978F24"): 50000, // test token
 		common.HexToAddress("0x55d398326f99059fF775485246999027B3197955"): 50000, // USDT
 		common.HexToAddress("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"): 50000, // BUSD
@@ -36,34 +39,53 @@ var (
 	}
 )
 
-type ERC20Token struct {
-	Address  common.Address
-	Name     string
-	Symbol   string
-	Decimals *big.Int
-}
-
-func (t *ERC20Token) Amount(val uint64) *big.Int {
-	return new(big.Int).Mul(big.NewInt(int64(val)), t.Decimals)
-}
-
 type txProcessor struct {
 	client   *rpc.Client
 	state    *state.StateDB
 	txResult *reexec.TxContext
 }
 
+type ERC20Token struct {
+	Address  common.Address
+	Name     string
+	Symbol   string
+	Decimals uint64
+}
+
+func (t *ERC20Token) AmountUint64(val *big.Int) uint64 {
+	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.Decimals)), nil)
+	return new(big.Int).Div(val, decimals).Uint64()
+}
+
+func (t *ERC20Token) Amount(val uint64) *big.Int {
+	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.Decimals)), nil)
+	return new(big.Int).Mul(big.NewInt(int64(val)), decimals)
+}
+
 func (t *txProcessor) getTokenInfo(addr common.Address) (*ERC20Token, error) {
-	erc20 := &ERC20Token{Address: addr}
-	batch := []rpc.BatchElem{
-		{Method: "name", Result: &erc20.Name},
-		{Method: "symbol", Result: &erc20.Symbol},
-		{Method: "decimals", Result: &erc20.Decimals},
+	client := ethclient.NewClient(t.client)
+	erc20, err := NewERC20(addr, client)
+	if err != nil {
+		return nil, err
 	}
-	if err := t.client.BatchCall(batch); err != nil {
-		return erc20, err
+	name, err := erc20.Name(&bind.CallOpts{})
+	if err != nil {
+		return nil, err
 	}
-	return erc20, nil
+	symbol, err := erc20.Symbol(&bind.CallOpts{})
+	if err != nil {
+		return nil, err
+	}
+	decimals, err := erc20.Decimals(&bind.CallOpts{})
+	if err != nil {
+		return nil, err
+	}
+	return &ERC20Token{
+		Address:  addr,
+		Name:     name,
+		Symbol:   symbol,
+		Decimals: uint64(decimals),
+	}, nil
 }
 
 func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
@@ -73,7 +95,7 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 			logger.Info("Big ETH transfer", "from", frame.From, "to", frame.To, "value", frame.Value, "tx", txHash.Hex())
 		}
 	}
-	threshold, exist := bigTokenTransferThreshold[frame.To]
+	threshold, exist := bigERC20TransferThreshold[frame.To]
 	if !exist {
 		return
 	}
@@ -107,7 +129,7 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 				return
 			}
 			if args.Amount != nil && args.Amount.Cmp(token.Amount(threshold)) > 0 {
-				logger.Info("Big ERC20 token transfer", "from", frame.From, "to", frame.To, "token", token.Symbol, "amount", args.Amount, "tx", txHash.Hex())
+				logger.Info("Big ERC20 token transfer", "from", frame.From, "to", args.To, "token", token.Symbol, "amount", token.AmountUint64(args.Amount), "tx", txHash.Hex())
 			}
 		case "transferFrom":
 			var args struct {
@@ -120,7 +142,7 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 				return
 			}
 			if args.Amount != nil && args.Amount.Cmp(token.Amount(threshold)) > 0 {
-				logger.Info("Big ERC20 token transfer", "from", frame.From, "to", frame.To, "token", token.Symbol, "amount", args.Amount.Uint64(), "tx", txHash.Hex())
+				logger.Info("Big ERC20 token transfer", "from", args.From, "to", args.To, "token", token.Symbol, "amount", token.AmountUint64(args.Amount), "tx", txHash.Hex())
 			}
 		}
 	}
@@ -142,6 +164,9 @@ type WhaleMonitorPlugin struct {
 
 func (p *WhaleMonitorPlugin) processTx(wg *sync.WaitGroup, state *state.StateDB, txRet *reexec.TxContext) {
 	defer func() {
+		if err := recover(); err != nil {
+			fmt.Printf("panic: %#v\n", err)
+		}
 		wg.Done()
 	}()
 	if txRet != nil && !txRet.Reverted {
