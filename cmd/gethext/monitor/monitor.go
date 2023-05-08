@@ -8,6 +8,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
@@ -73,6 +74,11 @@ func (m *ChainMonitor) Processors() map[string]Processor {
 }
 
 func (m *ChainMonitor) processBlock(ctx context.Context, block *types.Block) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error(fmt.Sprintf("ChainMonitor process block panic:\n%#v", err))
+		}
+	}()
 	hook := newMonitorHook(block)
 	statedb, err := m.replayer.ReplayBlock(ctx, block, nil, hook)
 	if err != nil {
