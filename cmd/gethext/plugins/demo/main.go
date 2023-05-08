@@ -12,6 +12,10 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
+var (
+	logger log.Logger
+)
+
 type DemoConfig struct {
 	Field1 string
 	Field2 int
@@ -25,11 +29,11 @@ type callHook struct {
 }
 
 func (h *callHook) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
-	log.Warn(fmt.Sprintf("OnTxStart %#x, index: %d", ctx.Transaction.Hash(), ctx.TxIndex))
+	logger.Warn(fmt.Sprintf("OnTxStart %#x, index: %d", ctx.Transaction.Hash(), ctx.TxIndex))
 }
 
 func (h *callHook) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
-	log.Warn(fmt.Sprintf("OnTxEnd %#x", ctx.Transaction.Hash()))
+	logger.Warn(fmt.Sprintf("OnTxEnd %#x", ctx.Transaction.Hash()))
 }
 
 func (h *callHook) OnCallEnter(ctx *reexec.CallCtx) {
@@ -37,7 +41,7 @@ func (h *callHook) OnCallEnter(ctx *reexec.CallCtx) {
 	if len(ctx.Input) >= 4 {
 		copy(method[:], ctx.Input[0:4])
 	}
-	log.Warn(fmt.Sprintf("OnCallEnter %#x", method))
+	logger.Warn(fmt.Sprintf("OnCallEnter %#x", method))
 }
 
 func (h *callHook) OnCallExit(ctx *reexec.CallCtx) {
@@ -45,7 +49,7 @@ func (h *callHook) OnCallExit(ctx *reexec.CallCtx) {
 	if len(ctx.Input) >= 4 {
 		copy(method[:], ctx.Input[0:4])
 	}
-	log.Warn(fmt.Sprintf("OnCallExit %#x", method))
+	logger.Warn(fmt.Sprintf("OnCallExit %#x", method))
 	if ctx.Error != nil {
 		log.Error(fmt.Sprintf("OnCallExit reverted. tx: %#v", ctx.Transaction.Hash()))
 	}
@@ -93,7 +97,8 @@ func (p *demoPlugin) runCountDown(ctx *plugin.PluginCtx) {
 }
 
 func (p *demoPlugin) OnEnable(ctx *plugin.PluginCtx) error {
-	ctx.Log.Info("Demo plugin enabled!")
+	logger = plugin.NewLogger("Demo")
+	logger.Info("Plugin enabled!")
 	go p.runCountDown(ctx)
 	return nil
 }
