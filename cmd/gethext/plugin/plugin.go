@@ -9,7 +9,6 @@ package plugin
 import (
 	"context"
 	"math/big"
-	"net/http"
 	"sync"
 	"time"
 
@@ -26,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -35,12 +33,6 @@ import (
 type Plugin interface {
 	OnEnable(ctx *PluginCtx) error
 	OnDisable(ctx *PluginCtx) error
-}
-
-type NodeBackend interface {
-	RegisterAPIs(api []rpc.API) error
-	RegisterHandler(name, path string, handler http.Handler) error
-	GetClient() *rpc.Client
 }
 
 type EthBackend interface {
@@ -146,6 +138,5 @@ func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
-	Log        log.Logger
 	LoadConfig func(cfg interface{}) error
 }
