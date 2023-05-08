@@ -26,6 +26,24 @@ type Interface struct {
 	Elements   map[string]ABIElement // map from 4-bytes to abi element
 }
 
+func (intf *Interface) UnpackInput(v interface{}, name string, data []byte) error {
+	var args abi.Arguments
+	if method, exist := intf.Methods[name]; exist {
+		if len(data)%32 != 0 {
+			return fmt.Errorf("abi: improperly formatted output: %s - Bytes: [%+v]", string(data), data)
+		}
+		args = method.Inputs
+	}
+	if len(args) > 0 {
+		unpacked, err := args.Unpack(data)
+		if err != nil {
+			return err
+		}
+		return args.Copy(v, unpacked)
+	}
+	return nil
+}
+
 func NewInterface(name string, elems []ABIElement) (Interface, error) {
 	methods := make(map[string]abi.Method)
 	events := make(map[string]abi.Event)
@@ -137,7 +155,11 @@ func (c *Contract) Interface(name string) *Interface {
 func NewContract(name string, elems []ABIElement, ifs []Interface) (*Contract, error) {
 	unknown := make(map[string]interface{})
 	ownMethods := make(map[string]abi.Method)
-	contractABI := abi.ABI{}
+	contractABI := abi.ABI{
+		Methods: make(map[string]abi.Method),
+		Events:  make(map[string]abi.Event),
+		Errors:  make(map[string]abi.Error),
+	}
 	for _, field := range elems {
 		switch field.Type {
 		case "constructor":
