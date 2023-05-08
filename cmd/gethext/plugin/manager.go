@@ -108,8 +108,15 @@ func (m *PluginManager) LoadPlugins() error {
 	return nil
 }
 
+func (m *PluginManager) recoverPanic(plName string) {
+	if err := recover(); err != nil {
+		log.Error(fmt.Sprintf("Plugin %s crashed: %#v", plName, err))
+	}
+}
+
 func (m *PluginManager) EnablePlugin(name string) error {
 	m.mtx.Lock()
+	defer m.recoverPanic(name)
 	defer m.mtx.Unlock()
 	pl, isExist := m.plugins[name]
 	if !isExist {
@@ -125,6 +132,7 @@ func (m *PluginManager) EnablePlugin(name string) error {
 
 func (m *PluginManager) DisablePlugin(name string) error {
 	m.mtx.Lock()
+	defer m.recoverPanic(name)
 	defer m.mtx.Unlock()
 	pl, isExist := m.plugins[name]
 	if !isExist {
