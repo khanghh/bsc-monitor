@@ -42,7 +42,7 @@ func (p *blockParser) OnCallEnter(ctx *reexec.CallCtx) {
 
 func (p *blockParser) createContractInfo(creator common.Address, bytecode []byte) *ContractInfo {
 	ids := abiutils.ParseMethodIds(bytecode)
-	ifs, methods := p.abiParser.GetInterfaces(ids)
+	ifs, methods := p.abiParser.ParseInterfaces(ids)
 	ifnames := make([]string, len(ifs))
 	for i, intf := range ifs {
 		ifnames[i] = intf.Name
