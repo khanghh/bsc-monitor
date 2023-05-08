@@ -67,7 +67,6 @@ func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
 		plname := strings.ReplaceAll(filepath.Base(fullpath), pluginExt, "")
 		plctx := &PluginCtx{
 			sharedCtx: m.ctx,
-			Log:       newLogger(plname),
 			LoadConfig: func(cfg interface{}) error {
 				return m.configStore.loadConfig(plname, cfg)
 			},
