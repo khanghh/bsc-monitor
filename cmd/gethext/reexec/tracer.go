@@ -106,7 +106,7 @@ func (t *callTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.
 		Type:  typ,
 		From:  from,
 		To:    to,
-		Input: input,
+		Input: common.CopyBytes(input),
 		Gas:   gas,
 		Value: value,
 	}
