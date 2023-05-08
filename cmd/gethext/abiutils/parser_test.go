@@ -62,10 +62,10 @@ func TestABIParserGetInterfaces(t *testing.T) {
 		return ret
 	}
 	parser := NewParser(rawdb.NewMemoryDatabase())
-	ifs, remaining := parser.GetInterfaces(testERC20Sigs)
+	ifs, remaining := parser.ParseInterfaces(testERC20Sigs)
 	assert.Contains(t, getNameList(ifs), "IERC20")
 	assert.Equal(t, remaining, unknowns)
-	ifs, remaining = parser.GetInterfaces(testERC721Sigs)
+	ifs, remaining = parser.ParseInterfaces(testERC721Sigs)
 	assert.Contains(t, getNameList(ifs), "IERC721")
 	assert.Equal(t, remaining, unknowns)
 }
