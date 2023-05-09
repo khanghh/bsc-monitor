@@ -70,11 +70,11 @@ func (t *txProcessor) getTokenInfo(addr common.Address) (*ERC20Token, error) {
 	}
 	name, err := erc20.Name(&bind.CallOpts{})
 	if err != nil {
-		return nil, err
+		name = "Unknown"
 	}
 	symbol, err := erc20.Symbol(&bind.CallOpts{})
 	if err != nil {
-		return nil, err
+		symbol = "Unknown"
 	}
 	decimals, err := erc20.Decimals(&bind.CallOpts{})
 	if err != nil {
