@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -52,14 +53,27 @@ type ERC20Token struct {
 	Decimals uint64
 }
 
-func (t *ERC20Token) AmountUint64(val *big.Int) uint64 {
-	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.Decimals)), nil)
-	return new(big.Int).Div(val, decimals).Uint64()
+func AmountFloat64(val *big.Int, decimals uint64) float64 {
+	expDec := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil))
+	bigFloatVal := new(big.Float).SetInt(val)
+	ret, _ := new(big.Float).Quo(bigFloatVal, expDec).Float64()
+	return ret
 }
 
-func (t *ERC20Token) Amount(val uint64) *big.Int {
-	decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(t.Decimals)), nil)
-	return new(big.Int).Mul(big.NewInt(int64(val)), decimals)
+func AmountString(val *big.Int, decimals uint64) string {
+	valFloat64 := AmountFloat64(val, decimals)
+	result := strconv.FormatFloat(valFloat64, 'f', -1, 64)
+	return result
+}
+
+func AmountUint64(val *big.Int, decimals uint64) uint64 {
+	expDec := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	return new(big.Int).Div(val, expDec).Uint64()
+}
+
+func AmountBig(val uint64, decimals uint64) *big.Int {
+	expDec := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	return new(big.Int).Mul(big.NewInt(int64(val)), expDec)
 }
 
 func (t *txProcessor) getTokenInfo(addr common.Address) (*ERC20Token, error) {
@@ -92,7 +106,7 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 	if frame.Value != nil {
 		if frame.Value.Cmp(bigETHTransferThreshold) > 0 {
 			txHash := t.txResult.Transaction.Hash()
-			logger.Info("Big ETH transfer", "from", frame.From, "to", frame.To, "value", frame.Value, "tx", txHash.Hex())
+			logger.Info("Big ETH transfer", "from", frame.From, "to", frame.To, "value", AmountString(frame.Value, 18), "tx", txHash.Hex())
 		}
 	}
 	threshold, exist := bigERC20TransferThreshold[frame.To]
@@ -128,8 +142,8 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 				logger.Error("Could not unpack input", "method", "transfer", "input", hexutil.Encode(frame.Input), "tx", txHash.Hex())
 				return
 			}
-			if args.Amount != nil && args.Amount.Cmp(token.Amount(threshold)) > 0 {
-				logger.Info("Big ERC20 token transfer", "from", frame.From, "to", args.To, "token", token.Symbol, "amount", token.AmountUint64(args.Amount), "tx", txHash.Hex())
+			if args.Amount != nil && args.Amount.Cmp(AmountBig(threshold, token.Decimals)) > 0 {
+				logger.Info("Big ERC20 token transfer", "from", frame.From, "to", args.To, "token", token.Symbol, "amount", AmountString(args.Amount, token.Decimals), "tx", txHash.Hex())
 			}
 		case "transferFrom":
 			var args struct {
@@ -141,8 +155,8 @@ func (t *txProcessor) processCallFrame(frame *reexec.CallFrame) {
 				logger.Error("Could not unpack input", "method", "transferFrom", "input", hexutil.Encode(frame.Input), "tx", txHash.Hex())
 				return
 			}
-			if args.Amount != nil && args.Amount.Cmp(token.Amount(threshold)) > 0 {
-				logger.Info("Big ERC20 token transfer", "from", args.From, "to", args.To, "token", token.Symbol, "amount", token.AmountUint64(args.Amount), "tx", txHash.Hex())
+			if args.Amount != nil && args.Amount.Cmp(AmountBig(threshold, token.Decimals)) > 0 {
+				logger.Info("Big ERC20 token transfer", "from", args.From, "to", args.To, "token", token.Symbol, "amount", AmountString(args.Amount, token.Decimals), "tx", txHash.Hex())
 			}
 		}
 	}
