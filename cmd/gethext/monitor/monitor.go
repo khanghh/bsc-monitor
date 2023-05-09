@@ -8,6 +8,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
@@ -17,6 +18,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+)
+
+const (
+	maxTriesInMemory = 127
 )
 
 type Processor interface {
@@ -73,6 +78,11 @@ func (m *ChainMonitor) Processors() map[string]Processor {
 }
 
 func (m *ChainMonitor) processBlock(ctx context.Context, block *types.Block) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Error(fmt.Sprintf("ChainMonitor process block panic:\n%#v", err))
+		}
+	}()
 	hook := newMonitorHook(block)
 	statedb, err := m.replayer.ReplayBlock(ctx, block, nil, hook)
 	if err != nil {
@@ -98,8 +108,7 @@ func (m *ChainMonitor) eventLoop() {
 			}
 			log.Info("ChainMonitor processing block", "number", event.Block.NumberU64())
 			m.processBlock(ctx, event.Block)
-			// keep state trie of last block
-			m.replayer.CapTrieDB(127)
+			m.replayer.CapTrieDB(maxTriesInMemory)
 		case <-m.quitCh:
 			return
 		}

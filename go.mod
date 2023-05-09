@@ -95,6 +95,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/influxdata/line-protocol v0.0.0-20210311194329-9aa0e372d097 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
+	github.com/karrick/tparse/v2 v2.8.1 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-ieproxy v0.0.0-20190702010315-6dee0af9227d // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
@@ -112,7 +113,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.5 // indirect
 	github.com/tklauser/numcpus v0.2.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
-	golang.org/x/exp v0.0.0-20230420155640-133eef4313cb // indirect
+	github.com/zekroTJA/timedmap v0.0.0-20200518230343-de9b879d109a // indirect
 	golang.org/x/mod v0.6.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/term v0.4.0 // indirect
@@ -123,4 +124,13 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.15
+// discordbot plugin
+require (
+	github.com/bwmarrin/discordgo v0.27.0
+	github.com/lus/dgc v1.1.1
+)
+
+replace (
+	github.com/lus/dgc v1.1.1 => github.com/khanghh/dgc v1.1.1
+	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.15
+)

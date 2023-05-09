@@ -136,6 +136,14 @@ type ABIParser struct {
 	fourbytesCache *lru.Cache
 }
 
+func (p *ABIParser) LookupInterface(name string) (*Interface, error) {
+	intf, exist := p.interfaces[name]
+	if !exist {
+		return nil, fmt.Errorf("unknown interface %s", name)
+	}
+	return &intf, nil
+}
+
 func (p *ABIParser) LookupFourBytes(id string) []ABIElement {
 	if cached, ok := p.fourbytesCache.Get(id); ok {
 		return cached.([]ABIElement)
@@ -172,9 +180,9 @@ func (p *ABIParser) isImplemented(intf Interface, sigs []string) bool {
 	return true
 }
 
-// GetInterfaces get all implemented interfaces of the given list of method ids
+// ParseInterfaces get all implemented interfaces of the given list of method ids
 // returns list of matched interfaces and list of unkown method ids
-func (p *ABIParser) GetInterfaces(ids []string) ([]Interface, []string) {
+func (p *ABIParser) ParseInterfaces(ids []string) ([]Interface, []string) {
 	implements := []Interface{}
 	ifMethods := map[string]bool{}
 	for _, intf := range p.interfaces {
@@ -200,7 +208,7 @@ func (p *ABIParser) ParseContract(bytecode []byte) (*Contract, error) {
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("empty contract")
 	}
-	ifs, methodIds := p.GetInterfaces(ids)
+	ifs, methodIds := p.ParseInterfaces(ids)
 	entries := []ABIElement{}
 	for _, id := range methodIds {
 		items := p.LookupFourBytes(id)
