@@ -20,6 +20,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+const (
+	maxTriesInMemory = 127
+)
+
 type Processor interface {
 	ProcessBlock(state *state.StateDB, block *types.Block, txResults []*reexec.TxContext) error
 }
@@ -104,8 +108,7 @@ func (m *ChainMonitor) eventLoop() {
 			}
 			log.Info("ChainMonitor processing block", "number", event.Block.NumberU64())
 			m.processBlock(ctx, event.Block)
-			// keep state trie of last block
-			m.replayer.CapTrieDB(127)
+			m.replayer.CapTrieDB(maxTriesInMemory)
 		case <-m.quitCh:
 			return
 		}
