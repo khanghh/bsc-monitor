@@ -20,7 +20,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -217,6 +216,7 @@ var (
 
 	monitorFlags = []cli.Flag{
 		pluginsDirFlag,
+		pluginsEnabledFlag,
 		monitorEnableFlag,
 		indexerEnableFlag,
 	}
@@ -314,20 +314,6 @@ func prepare(ctx *cli.Context) {
 	}
 }
 
-func resolvePluginsDir(pluginDir string) string {
-	if strings.HasPrefix(pluginDir, "/") {
-		return pluginDir
-	}
-	if pluginDir == "" {
-		execPath, err := os.Executable()
-		if err != nil {
-			panic(err)
-		}
-		return path.Join(path.Dir(execPath), defaultPluginDir)
-	}
-	return pluginDir
-}
-
 // geth is the main entry point into the system if no special subcommand is ran.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
@@ -342,17 +328,15 @@ func geth(ctx *cli.Context) error {
 	defer stack.Close()
 
 	serviceCfg := &EthExplorerConfig{
-		ConfigFile:  ctx.GlobalString(configFileFlag.Name),
 		InstanceDir: stack.InstanceDir(),
-		PluginsDir:  resolvePluginsDir(ctx.GlobalString(pluginsDirFlag.Name)),
+		Plugins:     &cfg.Plugins,
 		Monitor:     &cfg.Monitor,
 		Indexer:     &cfg.Indexer,
 	}
 	ethexplorer, err := NewExplorerService(serviceCfg, stack, ethereum)
 	if err != nil {
-		utils.Fatalf("Could not initialize chain monitor service")
+		utils.Fatalf("Could not initialize ethexplorer service")
 	}
-	stack.RegisterAPIs(ethexplorer.APIs())
 	stack.RegisterLifecycle(ethexplorer)
 	startNode(ctx, stack, ethereum.APIBackend, false)
 	stack.Wait()
