@@ -25,14 +25,14 @@ gethext: ## Build gethext
 	go build $(LDFLAGS) $(GCFLAGS) -o $(BUILD_DIR)/$@ $(CURDIR)/cmd/$@
 	@echo "Done building."
 
-plugins/%: ## Build demo plugin
+plugins/%: ## Build plugins
 	@echo "Building target: $*" 
 ifeq ($(shell go env GOOS), darwin)
 	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$*.dylib)
 else
 	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$*.so)
 endif
-	go build -buildmode=plugin $(LDFLAGS) $(GCFLAGS) -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$*
+	go build -buildmode=plugin $(LDFLAGS) $(GCFLAGS) -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$*/cmd
 	@echo "Done building."
 
 clean: ## Clean build directory

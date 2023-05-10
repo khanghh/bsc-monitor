@@ -21,12 +21,11 @@ import (
 )
 
 const (
-	pluginNamespace = "WhaleMonitor"
+	pluginLogTag = "WhaleMonitor"
 )
 
 var (
 	logger                    log.Logger
-	IERC20                    *abiutils.Interface
 	bigETHTransferThreshold   = new(big.Int).Mul(big.NewInt(100), big.NewInt(params.Ether))
 	bigERC20TransferThreshold = map[common.Address]float64{
 		common.HexToAddress("0xA3183498b579bd228aa2B62101C40CC1da978F24"): 50000, // test token
@@ -205,18 +204,14 @@ func (p *WhaleMonitorPlugin) ProcessBlock(state *state.StateDB, block *types.Blo
 
 func (p *WhaleMonitorPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	var err error
-	logger = plugin.NewLogger(pluginNamespace)
-	IERC20, err = abiutils.DefaultParser().LookupInterface("IERC20")
-	if err != nil {
-		return err
-	}
+	logger = plugin.NewLogger(pluginLogTag)
 	client, err := ctx.Node.Attach()
 	if err != nil {
 		return err
 	}
 	p.client = client
 	p.ctx = ctx
-	ctx.Monitor.RegisterProcessor(pluginNamespace, p)
+	ctx.Monitor.RegisterProcessor(pluginLogTag, p)
 	return nil
 }
 
