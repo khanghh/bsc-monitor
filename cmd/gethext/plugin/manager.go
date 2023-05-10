@@ -47,14 +47,24 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	pluginsDir  string
+	config      *PluginsConfig
 	configStore *configStore
-	plugins     map[string]loadedPlugin
+	plugins     map[string]*loadedPlugin
 	ctx         *sharedCtx
 	mtx         sync.Mutex
 }
 
-func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
+func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
+	if filepath.Base(filename) != filename {
+		return nil, errNotFound
+	}
+	if !strings.HasSuffix(filename, pluginExt) {
+		filename = filename + pluginExt
+	}
+	fullpath := filepath.Join(m.config.PluginsDir, filename)
+	if _, err := os.Stat(fullpath); err != nil {
+		return nil, errNotFound
+	}
 	plib, err := plugin.Open(fullpath)
 	if err != nil {
 		return nil, err
@@ -72,33 +82,32 @@ func (m *PluginManager) loadPlugin(fullpath string) (*loadedPlugin, error) {
 			},
 		}
 		plinstance := plOnload(plctx)
-		loaded := loadedPlugin{
+		m.plugins[plname] = &loadedPlugin{
 			ctx:      plctx,
 			name:     plname,
 			instance: plinstance,
 			enabled:  false,
 		}
-		m.plugins[plname] = loaded
-		return &loaded, m.EnablePlugin(plname)
+		return m.plugins[plname], nil
 	}
 	return nil, errNotPlugin
 }
 
-func (m *PluginManager) LoadPlugins() error {
-	if _, err := os.Stat(m.pluginsDir); os.IsNotExist(err) {
-		return err
+func (m *PluginManager) loadPlugins() error {
+	if _, err := os.Stat(m.config.PluginsDir); os.IsNotExist(err) {
+		return nil
 	}
-	files, err := os.ReadDir(m.pluginsDir)
+	files, err := os.ReadDir(m.config.PluginsDir)
 	if err != nil {
+		log.Error("Failed to read plugins directory", "error", err)
 		return err
 	}
 	loaded := []string{}
 	for _, entry := range files {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), pluginExt) {
-			fullpath := filepath.Join(m.pluginsDir, entry.Name())
-			pl, err := m.loadPlugin(fullpath)
+			pl, err := m.loadPlugin(entry.Name())
 			if err != nil {
-				log.Error("Error occur when load plugin", "plugin", entry.Name(), "error", err)
+				log.Error("Could not load plugin", "plugin", entry.Name(), "error", err)
 				continue
 			}
 			loaded = append(loaded, pl.name)
@@ -112,6 +121,19 @@ func (m *PluginManager) recoverPanic(plName string) {
 	if err := recover(); err != nil {
 		log.Error(fmt.Sprintf("Plugin %s crashed: %#v", plName, err))
 	}
+}
+
+func (m *PluginManager) Status() ([]string, []string) {
+	enabled := []string{}
+	disabled := []string{}
+	for name, pl := range m.plugins {
+		if pl.enabled {
+			enabled = append(enabled, name)
+		} else {
+			disabled = append(disabled, name)
+		}
+	}
+	return enabled, disabled
 }
 
 func (m *PluginManager) EnablePlugin(name string) error {
@@ -146,6 +168,19 @@ func (m *PluginManager) DisablePlugin(name string) error {
 	return nil
 }
 
+func (m *PluginManager) Start() error {
+	for _, name := range m.config.Enabled {
+		if err := m.EnablePlugin(name); err != nil {
+			log.Error(fmt.Sprintf("Could not enable plugin %s", name), "error", err)
+		}
+	}
+	enabled, disabled := m.Status()
+	if len(enabled) > 0 {
+		log.Info(fmt.Sprintf("Enabled %d/%d plugin(s).", len(enabled), len(m.plugins)), "enabled", enabled, "disabled", disabled)
+	}
+	return nil
+}
+
 func (m *PluginManager) Stop() error {
 	for name := range m.plugins {
 		if err := m.DisablePlugin(name); err != nil {
@@ -156,11 +191,11 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(pluginsDir string, configFile string, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
-	backend := &PluginManager{
-		pluginsDir:  pluginsDir,
-		configStore: NewConfigStore(pluginConfigPrefix, configFile),
-		plugins:     make(map[string]loadedPlugin),
+func NewPluginManager(config *PluginsConfig, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
+	pm := &PluginManager{
+		config:      config,
+		configStore: NewConfigStore(pluginConfigPrefix, config.ConfigFile),
+		plugins:     make(map[string]*loadedPlugin),
 		ctx: &sharedCtx{
 			Node:    node,
 			Eth:     ethBackend,
@@ -168,5 +203,8 @@ func NewPluginManager(pluginsDir string, configFile string, node *node.Node, eth
 			TaskMgr: taskMgr,
 		},
 	}
-	return backend, nil
+	if err := pm.loadPlugins(); err != nil {
+		return nil, err
+	}
+	return pm, nil
 }
