@@ -8,6 +8,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+const (
+	pluginNamespace = "discordbot"
+)
+
 type DiscordConfig struct {
 	BotToken     string   `json:"botToken"`
 	CmdPrefix    string   `json:"cmdPrefix"`
@@ -29,7 +33,7 @@ func (cfg *DiscordConfig) sanitize() error {
 }
 
 type DiscordPlugin struct {
-	bot  *DiscordBot
+	bot  *discordBot
 	quit context.CancelFunc
 }
 
@@ -51,6 +55,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	botCtx, cancel := context.WithCancel(context.Background())
 	p.quit = cancel
 	go p.bot.Run(botCtx)
+	ctx.Set(pluginNamespace, p.bot)
 	return nil
 }
 
@@ -62,5 +67,6 @@ func (p *DiscordPlugin) OnDisable(ctx *plugin.PluginCtx) error {
 }
 
 func OnLoad(ctx *plugin.PluginCtx) plugin.Plugin {
-	return &DiscordPlugin{}
+	pl := &DiscordPlugin{}
+	return pl
 }
