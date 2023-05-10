@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"unicode"
 
 	"gopkg.in/urfave/cli.v1"
@@ -77,6 +78,11 @@ var tomlSettings = toml.Config{
 			log.Warn("Config field is deprecated and won't have an effect", "name", id)
 			return nil
 		}
+
+		if strings.HasPrefix(id, "plugin") {
+			return nil
+		}
+
 		var link string
 		if unicode.IsUpper(rune(rt.Name()[0])) && rt.PkgPath() != "main" {
 			link = fmt.Sprintf(", see https://godoc.org/%s#%s for available fields", rt.PkgPath(), rt.Name())
