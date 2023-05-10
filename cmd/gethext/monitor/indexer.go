@@ -44,7 +44,7 @@ type ChainIndexer struct {
 	quitCh  chan struct{}
 }
 
-// processBlock re-executes every transactions in block and extracts neccessary info into indexdb
+// processBlock re-executes every transactions in block and extracts necessary info into indexdb
 func (idx *ChainIndexer) processBlock(block *types.Block, statedb *state.StateDB) (*state.StateDB, *blockIndexData, error) {
 	data := newBlockIndexData(idx.indexdb, block)
 	if idx.lastBlock.Root() == block.Root() {
