@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 	"unicode"
 
@@ -32,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
@@ -93,6 +96,7 @@ type gethConfig struct {
 	Metrics  metrics.Config
 	Monitor  monitor.MonitorConfig
 	Indexer  monitor.IndexerConfig
+	Plugins  plugin.PluginsConfig
 }
 
 func defaultNodeConfig() node.Config {
@@ -120,6 +124,20 @@ func loadTOMLConfig(file string, cfg interface{}) error {
 	return err
 }
 
+func resolvePluginsDir(pluginDir string) string {
+	if filepath.IsAbs(pluginDir) {
+		return pluginDir
+	}
+	if pluginDir == "" {
+		execPath, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		return path.Join(path.Dir(execPath), defaultPluginDir)
+	}
+	return pluginDir
+}
+
 // loadConfig loads geth configuration and creates a blank node instance.
 func loadConfig(ctx *cli.Context) *gethConfig {
 	// Load defaults.
@@ -139,12 +157,25 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 	}
 
 	// Override config with command line flags
+	pluginDir := cfg.Plugins.PluginsDir
+	if ctx.IsSet(pluginsDirFlag.Name) {
+		pluginDir = ctx.GlobalString(pluginsDirFlag.Name)
+	}
+	cfg.Plugins.PluginsDir = resolvePluginsDir(pluginDir)
+	if ctx.IsSet(pluginsEnabledFlag.Name) {
+		cfg.Plugins.Enabled = ctx.GlobalStringSlice(pluginsEnabledFlag.Name)
+	}
+	if cfg.Plugins.ConfigFile == "" {
+		cfg.Plugins.ConfigFile = ctx.GlobalString(configFileFlag.Name)
+	}
+
 	if ctx.IsSet(monitorEnableFlag.Name) {
 		cfg.Monitor.Enabled = ctx.GlobalBool(monitorEnableFlag.Name)
 	}
 	if ctx.IsSet(indexerEnableFlag.Name) {
 		cfg.Indexer.Enabled = ctx.GlobalBool(indexerEnableFlag.Name)
 	}
+
 	return cfg
 }
 

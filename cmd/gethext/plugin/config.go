@@ -36,6 +36,12 @@ func loadTOMLConfig(filename string, conf interface{}) error {
 	return err
 }
 
+type PluginsConfig struct {
+	ConfigFile string
+	PluginsDir string
+	Enabled    []string
+}
+
 type configStore struct {
 	prefix     string
 	fileName   string

@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -30,9 +29,8 @@ const (
 )
 
 type EthExplorerConfig struct {
-	ConfigFile  string
-	PluginsDir  string
 	InstanceDir string
+	Plugins     *plugin.PluginsConfig
 	Monitor     *monitor.MonitorConfig
 	Indexer     *monitor.IndexerConfig
 }
@@ -50,10 +48,6 @@ type EthExplorer struct {
 
 func (s *EthExplorer) Start() error {
 	log.Info("Starting chain explorer service")
-	if err := s.pluginManager.LoadPlugins(); err != nil {
-		log.Error("Could not load plugins", "error", err)
-		return err
-	}
 	if s.config.Monitor.Enabled {
 		if err := s.chainMonitor.Start(); err != nil {
 			log.Error("Could not start chain monitor", "error", err)
@@ -65,6 +59,10 @@ func (s *EthExplorer) Start() error {
 			log.Error("Could not start chain indexer", "error", err)
 			return err
 		}
+	}
+	if err := s.pluginManager.Start(); err != nil {
+		log.Error("Could not start plugin manager", "error", err)
+		return err
 	}
 	return nil
 }
@@ -83,17 +81,6 @@ func (s *EthExplorer) Stop() error {
 	}
 	s.quitLock.Unlock()
 	return nil
-}
-
-func (s *EthExplorer) APIs() []rpc.API {
-	return []rpc.API{
-		{
-			Namespace: "idx",
-			Version:   "1.0",
-			Service:   monitor.NewIndexerAPI(s.chainIndexer),
-			Public:    true,
-		},
-	}
 }
 
 func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethereum) (*EthExplorer, error) {
@@ -119,7 +106,7 @@ func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethere
 		return nil, err
 	}
 
-	pluginManager, err := plugin.NewPluginManager(cfg.PluginsDir, cfg.ConfigFile, node, eth.APIBackend, chainMonitor, taskManager)
+	pluginManager, err := plugin.NewPluginManager(cfg.Plugins, node, eth.APIBackend, chainMonitor, taskManager)
 	if err != nil {
 		return nil, err
 	}
