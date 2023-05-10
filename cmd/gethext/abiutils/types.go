@@ -21,7 +21,7 @@ func FourBytesSigOf(sig string) string {
 type privateABI = abi.ABI
 
 type Interface struct {
-	privateABI                       // embeded abi struct
+	privateABI                       // embedded abi struct
 	Name       string                // interface name
 	Elements   map[string]ABIElement // map from 4-bytes to abi element
 }

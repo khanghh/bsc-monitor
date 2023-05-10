@@ -50,8 +50,7 @@ func newMonitorHook(block *types.Block) *monitorHook {
 	}
 }
 
-// ChainMonitor calls registed processors to process every pending
-// transactions recieved in txpool
+// ChainMonitor calls registered processors to process every pending transactions received in txpool
 type ChainMonitor struct {
 	config     *MonitorConfig
 	blockchain *core.BlockChain
