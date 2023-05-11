@@ -45,7 +45,7 @@ func renderMessageEmbed(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 		},
 		{
 			Name:  "Amount",
-			Value: fmt.Sprintf("%s [**%s**](${%s})", amount, tokenName, tokenUrl),
+			Value: fmt.Sprintf("%s [%s](%s)", amount, tokenName, tokenUrl),
 		},
 	}
 	return &discordgo.MessageSend{
