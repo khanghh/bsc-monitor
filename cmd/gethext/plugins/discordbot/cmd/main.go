@@ -5,11 +5,8 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
 	"github.com/ethereum/go-ethereum/log"
-)
-
-const (
-	pluginNamespace = "discordbot"
 )
 
 type DiscordConfig struct {
@@ -55,7 +52,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	botCtx, cancel := context.WithCancel(context.Background())
 	p.quit = cancel
 	go p.bot.Run(botCtx)
-	ctx.Set(pluginNamespace, p.bot)
+	ctx.Set(discordbot.PluginNamespace, p.bot)
 	return nil
 }
 
