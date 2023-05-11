@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -29,7 +30,7 @@ func (cfg *DiscordConfig) sanitize() error {
 }
 
 type DiscordPlugin struct {
-	bot  *DiscordBot
+	bot  *discordBot
 	quit context.CancelFunc
 }
 
@@ -42,7 +43,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		return err
 	}
 	var err error
-	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix)
+	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix, config.ChannelId)
 	if err != nil {
 		log.Error("Could not initialize discord bot", "error", err)
 		return err
@@ -51,6 +52,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	botCtx, cancel := context.WithCancel(context.Background())
 	p.quit = cancel
 	go p.bot.Run(botCtx)
+	ctx.Set(discordbot.PluginNamespace, p.bot)
 	return nil
 }
 
@@ -62,5 +64,6 @@ func (p *DiscordPlugin) OnDisable(ctx *plugin.PluginCtx) error {
 }
 
 func OnLoad(ctx *plugin.PluginCtx) plugin.Plugin {
-	return &DiscordPlugin{}
+	pl := &DiscordPlugin{}
+	return pl
 }

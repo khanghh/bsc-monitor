@@ -161,6 +161,7 @@ func (m *PluginManager) DisablePlugin(name string) error {
 		return nil
 	}
 
+	pl.ctx.EventScope.Close()
 	if err := pl.instance.OnDisable(pl.ctx); err != nil {
 		return err
 	}

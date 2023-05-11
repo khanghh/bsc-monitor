@@ -50,8 +50,7 @@ func newMonitorHook(block *types.Block) *monitorHook {
 	}
 }
 
-// ChainMonitor calls registed processors to process every pending
-// transactions recieved in txpool
+// ChainMonitor calls registered processors to process every pending transactions received in txpool
 type ChainMonitor struct {
 	config     *MonitorConfig
 	blockchain *core.BlockChain
@@ -116,11 +115,7 @@ func (m *ChainMonitor) eventLoop() {
 }
 
 func (m *ChainMonitor) Start() error {
-	processors := make([]string, 0, len(m.processors))
-	for procName := range m.processors {
-		processors = append(processors, procName)
-	}
-	log.Info("Start monitoring blockchain", "processors", processors)
+	log.Info("Start monitoring blockchain")
 	m.chainHeadCh = make(chan core.ChainHeadEvent)
 	m.chainHeadSub = m.blockchain.SubscribeChainHeadEvent(m.chainHeadCh)
 	m.wg.Add(1)

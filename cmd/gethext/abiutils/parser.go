@@ -181,7 +181,7 @@ func (p *ABIParser) isImplemented(intf Interface, sigs []string) bool {
 }
 
 // ParseInterfaces get all implemented interfaces of the given list of method ids
-// returns list of matched interfaces and list of unkown method ids
+// returns list of matched interfaces and list of unknown method ids
 func (p *ABIParser) ParseInterfaces(ids []string) ([]Interface, []string) {
 	implements := []Interface{}
 	ifMethods := map[string]bool{}

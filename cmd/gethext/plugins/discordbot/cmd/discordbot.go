@@ -5,38 +5,38 @@ import (
 	"reflect"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/lus/dgc"
 )
 
-type CommandProcessor interface {
-	RegisterCommands(cmdRouter *dgc.Router)
-	OnStartBot(session *discordgo.Session) error
-	OnStopBot()
-}
-
-type DiscordBot struct {
+type discordBot struct {
 	Session       *discordgo.Session
 	CmdRouter     *dgc.Router
-	cmdProcessors []CommandProcessor
+	cmdProcessors []discordbot.CommandProcessor
+	ChannelId     string
 }
 
-func (bot *DiscordBot) RegisterCommand(cmds ...*dgc.Command) {
+func (bot *discordBot) RegisterCommand(cmds ...*dgc.Command) {
 	for _, cmd := range cmds {
 		bot.CmdRouter.RegisterCmd(cmd)
 	}
 }
 
-func (bot *DiscordBot) AddCommandProcessor(processor CommandProcessor) {
+func (bot *discordBot) AddCommandProcessor(processor discordbot.CommandProcessor) {
 	bot.cmdProcessors = append(bot.cmdProcessors, processor)
 }
 
-func (bot *DiscordBot) SetCmdPrefix(cmdPrefix string) {
+func (bot *discordBot) SetCmdPrefix(cmdPrefix string) {
 	bot.CmdRouter.Prefixes = []string{cmdPrefix}
 }
 
-func (bot *DiscordBot) Run(ctx context.Context) {
-	// bot.CmdRouter.RegisterMiddleware(restrictRolesMiddleware)
+func (bot *discordBot) SendChannelMessage(messgae *discordgo.MessageSend) error {
+	_, err := bot.Session.ChannelMessageSendComplex(bot.ChannelId, messgae)
+	return err
+}
+
+func (bot *discordBot) Run(ctx context.Context) {
 	for _, processor := range bot.cmdProcessors {
 		processor.RegisterCommands(bot.CmdRouter)
 	}
@@ -55,7 +55,7 @@ func (bot *DiscordBot) Run(ctx context.Context) {
 	}
 }
 
-func NewDiscordBot(botToken string, cmdPrefix string) (*DiscordBot, error) {
+func NewDiscordBot(botToken string, cmdPrefix string, channelId string) (*discordBot, error) {
 	botSession, err := discordgo.New("Bot " + botToken)
 	if err != nil {
 		return nil, err
@@ -69,8 +69,9 @@ func NewDiscordBot(botToken string, cmdPrefix string) (*DiscordBot, error) {
 		Prefixes: []string{cmdPrefix},
 		Storage:  make(map[string]*dgc.ObjectsMap),
 	}
-	return &DiscordBot{
+	return &discordBot{
 		Session:   botSession,
 		CmdRouter: cmdRouter,
+		ChannelId: channelId,
 	}, nil
 }
