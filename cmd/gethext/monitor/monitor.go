@@ -115,11 +115,7 @@ func (m *ChainMonitor) eventLoop() {
 }
 
 func (m *ChainMonitor) Start() error {
-	processors := make([]string, 0, len(m.processors))
-	for procName := range m.processors {
-		processors = append(processors, procName)
-	}
-	log.Info("Start monitoring blockchain", "processors", processors)
+	log.Info("Start monitoring blockchain")
 	m.chainHeadCh = make(chan core.ChainHeadEvent)
 	m.chainHeadSub = m.blockchain.SubscribeChainHeadEvent(m.chainHeadCh)
 	m.wg.Add(1)
