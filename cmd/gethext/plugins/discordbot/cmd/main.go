@@ -43,7 +43,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		return err
 	}
 	var err error
-	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix)
+	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix, config.ChannelId)
 	if err != nil {
 		log.Error("Could not initialize discord bot", "error", err)
 		return err
