@@ -14,6 +14,7 @@ type discordBot struct {
 	Session       *discordgo.Session
 	CmdRouter     *dgc.Router
 	cmdProcessors []discordbot.CommandProcessor
+	channelId     string
 }
 
 func (bot *discordBot) RegisterCommand(cmds ...*dgc.Command) {
@@ -28,6 +29,11 @@ func (bot *discordBot) AddCommandProcessor(processor discordbot.CommandProcessor
 
 func (bot *discordBot) SetCmdPrefix(cmdPrefix string) {
 	bot.CmdRouter.Prefixes = []string{cmdPrefix}
+}
+
+func (bot *discordBot) SendChannelMessage(messgae *discordgo.MessageSend) error {
+	_, err := bot.Session.ChannelMessageSendComplex(bot.channelId, messgae)
+	return err
 }
 
 func (bot *discordBot) Run(ctx context.Context) {
