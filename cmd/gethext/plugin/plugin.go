@@ -138,5 +138,6 @@ func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
+	EventScope event.SubscriptionScope
 	LoadConfig func(cfg interface{}) error
 }
