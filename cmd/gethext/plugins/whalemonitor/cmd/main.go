@@ -176,9 +176,10 @@ func (p *WhaleMonitorPlugin) processTx(wg *sync.WaitGroup, state *state.StateDB,
 	}()
 	if txRet != nil && !txRet.Reverted {
 		proc := txProcessor{
-			client:   p.client,
-			state:    state,
-			txResult: txRet,
+			client:    p.client,
+			state:     state,
+			txResult:  txRet,
+			whaleFeed: &p.whaleFeed,
 		}
 		proc.processCallStack(txRet.CallStack)
 	}
