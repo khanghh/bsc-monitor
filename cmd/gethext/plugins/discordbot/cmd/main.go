@@ -5,8 +5,11 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
-	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
 	"github.com/ethereum/go-ethereum/log"
+)
+
+const (
+	pluginName = "DiscordBot"
 )
 
 type DiscordConfig struct {
@@ -36,7 +39,7 @@ type DiscordPlugin struct {
 
 func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	config := new(DiscordConfig)
-	if err := ctx.LoadConfig(&config); err != nil {
+	if err := ctx.LoadConfig(pluginName, &config); err != nil {
 		return err
 	}
 	if err := config.sanitize(); err != nil {
@@ -48,11 +51,11 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		log.Error("Could not initialize discord bot", "error", err)
 		return err
 	}
-	p.bot.AddCommandProcessor(&AdminCmdProcessor{config.AllowedRoles})
+	p.bot.RegisterCommand(NewAdminCmdProcessor(config.AllowedRoles).Commands()...)
 	botCtx, cancel := context.WithCancel(context.Background())
 	p.quit = cancel
 	go p.bot.Run(botCtx)
-	ctx.Set(discordbot.PluginNamespace, p.bot)
+	ctx.Set(pluginName, p.bot)
 	return nil
 }
 

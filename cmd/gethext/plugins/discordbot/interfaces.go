@@ -5,16 +5,8 @@ import (
 	"github.com/lus/dgc"
 )
 
-const PluginNamespace = "discordbot"
-
-type CommandProcessor interface {
-	RegisterCommands(cmdRouter *dgc.Router)
-	OnStartBot(session *discordgo.Session) error
-	OnStopBot()
-}
-
 type DiscordBot interface {
 	RegisterCommand(cmd ...*dgc.Command)
-	AddCommandProcessor(processor CommandProcessor)
+	UnregisterCommand(name string)
 	SendChannelMessage(messgae *discordgo.MessageSend) error
 }

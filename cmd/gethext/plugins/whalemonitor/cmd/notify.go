@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	explorerURL = "https://bscscan.com"
+	explorerURL     = "https://bscscan.com"
+	discordInstance = "DiscordBot"
 )
 
 type discordSender struct {
@@ -21,20 +22,22 @@ type discordSender struct {
 
 func renderMessageEmbed(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 	title := ""
-	amount := ""
-	tokenUrl := ""
-	tokenName := ""
+	tokenText := ""
 	if event.Token != nil {
 		title = "Big ERC20 transfer"
-		amount = AmountString(event.Value, event.Token.Decimals)
-		tokenUrl = fmt.Sprintf("%s/token/%s", explorerURL, event.Token.Address)
-		tokenName = event.Token.Name
+		amount := AmountString(event.Value, event.Token.Decimals)
+		tokenUrl := fmt.Sprintf("%s/token/%s", explorerURL, event.Token.Address)
+		tokenText = fmt.Sprintf("%s [%s](%s)", amount, event.Token.Name, tokenUrl)
 	} else {
-		title = "Big ETH transfer"
-		amount = AmountString(event.Value, 18)
-		tokenName = "ETH"
+		title = "Big BNB transfer"
+		amount := AmountString(event.Value, 18)
+		tokenText = fmt.Sprintf("%s BNB", amount)
 	}
 	fields := []*discordgo.MessageEmbedField{
+		{
+			Name:  "Tx",
+			Value: event.TxHash.String(),
+		},
 		{
 			Name:  "From",
 			Value: event.From.String(),
@@ -45,7 +48,7 @@ func renderMessageEmbed(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 		},
 		{
 			Name:  "Amount",
-			Value: fmt.Sprintf("%s [%s](%s)", amount, tokenName, tokenUrl),
+			Value: tokenText,
 		},
 	}
 	return &discordgo.MessageSend{
@@ -73,7 +76,7 @@ func newDiscordSender(bot discordbot.DiscordBot) *discordSender {
 
 func initNotificationSenders(ctx *plugin.PluginCtx) []notificationSender {
 	senders := []notificationSender{}
-	if instance, exist := ctx.Get(discordbot.PluginNamespace); exist {
+	if instance, exist := ctx.Get(discordInstance); exist {
 		bot := instance.(discordbot.DiscordBot)
 		senders = append(senders, newDiscordSender(bot))
 	}

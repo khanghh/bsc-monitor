@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 )
@@ -47,11 +48,10 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	config      *PluginsConfig
-	configStore *configStore
-	plugins     map[string]*loadedPlugin
-	ctx         *sharedCtx
-	mtx         sync.Mutex
+	config  *PluginsConfig
+	plugins map[string]loadedPlugin
+	ctx     *sharedCtx
+	mtx     sync.Mutex
 }
 
 func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
@@ -61,7 +61,7 @@ func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
 	if !strings.HasSuffix(filename, pluginExt) {
 		filename = filename + pluginExt
 	}
-	fullpath := filepath.Join(m.config.PluginsDir, filename)
+	fullpath := filepath.Join(m.config.BinaryDir, filename)
 	if _, err := os.Stat(fullpath); err != nil {
 		return nil, errNotFound
 	}
@@ -77,27 +77,26 @@ func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
 		plname := strings.ReplaceAll(filepath.Base(fullpath), pluginExt, "")
 		plctx := &PluginCtx{
 			sharedCtx: m.ctx,
-			LoadConfig: func(cfg interface{}) error {
-				return m.configStore.loadConfig(plname, cfg)
-			},
+			DataDir:   filepath.Join(m.config.DataDir, plname),
 		}
 		plinstance := plOnload(plctx)
-		m.plugins[plname] = &loadedPlugin{
+		plugin := loadedPlugin{
 			ctx:      plctx,
 			name:     plname,
 			instance: plinstance,
 			enabled:  false,
 		}
-		return m.plugins[plname], nil
+		m.plugins[plname] = plugin
+		return &plugin, nil
 	}
 	return nil, errNotPlugin
 }
 
 func (m *PluginManager) loadPlugins() error {
-	if _, err := os.Stat(m.config.PluginsDir); os.IsNotExist(err) {
+	if _, err := os.Stat(m.config.BinaryDir); os.IsNotExist(err) {
 		return nil
 	}
-	files, err := os.ReadDir(m.config.PluginsDir)
+	files, err := os.ReadDir(m.config.BinaryDir)
 	if err != nil {
 		log.Error("Failed to read plugins directory", "error", err)
 		return err
@@ -192,16 +191,17 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(config *PluginsConfig, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
+func NewPluginManager(config *PluginsConfig, db ethdb.Database, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	pm := &PluginManager{
-		config:      config,
-		configStore: NewConfigStore(pluginConfigPrefix, config.ConfigFile),
-		plugins:     make(map[string]*loadedPlugin),
+		config:  config,
+		plugins: make(map[string]loadedPlugin),
 		ctx: &sharedCtx{
+			db:      db,
 			Node:    node,
 			Eth:     ethBackend,
 			Monitor: monitorBackend,
 			TaskMgr: taskMgr,
+			config:  NewConfigStore(pluginConfigPrefix, config.ConfigFile),
 		},
 	}
 	if err := pm.loadPlugins(); err != nil {

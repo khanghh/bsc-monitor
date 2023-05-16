@@ -14,12 +14,14 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/task"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -107,12 +109,18 @@ type TaskManager interface {
 // sharedCtx exposes common useful modules for the plugin to
 // implement its own business
 type sharedCtx struct {
+	db      ethdb.Database
+	config  *ConfigStore
 	Node    *node.Node
 	Eth     EthBackend
 	Monitor MonitorBackend
 	TaskMgr TaskManager
 	Storage map[string]interface{}
 	mtx     sync.RWMutex
+}
+
+func (ctx *sharedCtx) Database() ethdb.Database {
+	return ctx.db
 }
 
 func (ctx *sharedCtx) Set(key string, val interface{}) {
@@ -134,10 +142,19 @@ func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
 	return val, ok
 }
 
+func (ctx *sharedCtx) LoadConfig(name string, cfg interface{}) error {
+	return ctx.config.LoadConfig(name, cfg)
+}
+
+func (ctx *sharedCtx) OpenDatabase(prefix string) ethdb.Database {
+	plPrefix := extdb.PluginDataPrefix(prefix)
+	return rawdb.NewTable(ctx.db, string(plPrefix))
+}
+
 // PluginCtx provides access to internal services for a plugin, each plugin
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
+	DataDir    string
 	EventScope event.SubscriptionScope
-	LoadConfig func(cfg interface{}) error
 }
