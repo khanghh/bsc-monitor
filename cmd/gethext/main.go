@@ -47,8 +47,7 @@ import (
 )
 
 const (
-	clientIdentifier = "geth"    // Client identifier to advertise over the network
-	defaultPluginDir = "plugins" // Default directory for plugin files
+	clientIdentifier = "geth" // Client identifier to advertise over the network
 )
 
 var (
