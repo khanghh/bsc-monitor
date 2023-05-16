@@ -5,7 +5,7 @@ import "gopkg.in/urfave/cli.v1"
 var (
 	pluginsDirFlag = cli.StringFlag{
 		Name:  "plugins.dir",
-		Usage: "Specify the directory where plugin files are located",
+		Usage: "Specify the directory where plugin binary files are located. If not specified the default directory `plugins` in startup directory is used",
 	}
 	pluginsEnabledFlag = cli.StringSliceFlag{
 		Name:  "plugins.enabled",

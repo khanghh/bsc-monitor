@@ -139,7 +139,7 @@ func resolvePluginsDir(pluginDir string) string {
 		if err != nil {
 			panic(err)
 		}
-		return path.Join(path.Dir(execPath), defaultPluginDir)
+		return path.Join(path.Dir(execPath), "plugins")
 	}
 	return pluginDir
 }
@@ -163,11 +163,11 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 	}
 
 	// Override config with command line flags
-	pluginDir := cfg.Plugins.PluginsDir
+	pluginDir := cfg.Plugins.BinaryDir
 	if ctx.IsSet(pluginsDirFlag.Name) {
 		pluginDir = ctx.GlobalString(pluginsDirFlag.Name)
 	}
-	cfg.Plugins.PluginsDir = resolvePluginsDir(pluginDir)
+	cfg.Plugins.BinaryDir = resolvePluginsDir(pluginDir)
 	if ctx.IsSet(pluginsEnabledFlag.Name) {
 		cfg.Plugins.Enabled = ctx.GlobalStringSlice(pluginsEnabledFlag.Name)
 	}
