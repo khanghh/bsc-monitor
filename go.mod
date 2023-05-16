@@ -79,6 +79,7 @@ require (
 
 require (
 	github.com/bwmarrin/discordgo v0.27.1
+	github.com/khanghh/goja-nodejs v1.0.1
 	github.com/lus/dgc v1.1.0
 	github.com/tidwall/wal v1.1.7
 	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3
