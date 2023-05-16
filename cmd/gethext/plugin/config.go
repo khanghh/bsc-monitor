@@ -42,14 +42,15 @@ type PluginsConfig struct {
 	Enabled    []string
 }
 
-type configStore struct {
+type ConfigStore struct {
 	prefix     string
 	fileName   string
 	fileInfo   os.FileInfo
 	configData map[string]interface{}
 }
 
-func (c *configStore) getConfig(name string, cfg interface{}) error {
+// GetConfig retrieves the config for the given name into the provided interface.
+func (c *ConfigStore) GetConfig(name string, cfg interface{}) error {
 	var (
 		rawConf interface{}
 		exists  bool
@@ -64,7 +65,8 @@ func (c *configStore) getConfig(name string, cfg interface{}) error {
 	return tomlSettings.Unmarshal(buf, cfg)
 }
 
-func (c *configStore) loadConfig(name string, cfg interface{}) error {
+// LoadConfig checks for config file changes and loads config to the provided interfaces
+func (c *ConfigStore) LoadConfig(name string, cfg interface{}) error {
 	fileInfo, err := os.Stat(c.fileName)
 	if err != nil {
 		return err
@@ -77,11 +79,11 @@ func (c *configStore) loadConfig(name string, cfg interface{}) error {
 		c.configData = tomlConfig[c.prefix].(map[string]interface{})
 		c.fileInfo = fileInfo
 	}
-	return c.getConfig(name, cfg)
+	return c.GetConfig(name, cfg)
 }
 
-func NewConfigStore(prefix, fileName string) *configStore {
-	cfg := &configStore{
+func NewConfigStore(prefix, fileName string) *ConfigStore {
+	cfg := &ConfigStore{
 		prefix:     prefix,
 		fileName:   fileName,
 		configData: make(map[string]interface{}),
