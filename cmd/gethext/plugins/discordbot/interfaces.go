@@ -5,8 +5,6 @@ import (
 	"github.com/lus/dgc"
 )
 
-const PluginNamespace = "discordbot"
-
 type DiscordBot interface {
 	RegisterCommand(cmd ...*dgc.Command)
 	UnregisterCommand(name string)
