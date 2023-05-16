@@ -48,7 +48,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		log.Error("Could not initialize discord bot", "error", err)
 		return err
 	}
-	p.bot.AddCommandProcessor(&AdminCmdProcessor{config.AllowedRoles})
+	p.bot.RegisterCommand(NewAdminCmdProcessor(config.AllowedRoles).Commands()...)
 	botCtx, cancel := context.WithCancel(context.Background())
 	p.quit = cancel
 	go p.bot.Run(botCtx)
