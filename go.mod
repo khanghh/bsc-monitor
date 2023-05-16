@@ -17,7 +17,6 @@ require (
 	github.com/deckarep/golang-set v1.8.0
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/docker/docker v1.6.1
-	github.com/dop251/goja v0.0.0-20220405120441-9037c2b61cbf
 	github.com/edsrzf/mmap-go v1.0.0
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
@@ -26,7 +25,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/google/gofuzz v1.2.0
-	github.com/google/pprof v0.0.0-20220829040838-70bd9ae97f40
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904
 	github.com/google/uuid v1.1.5
 	github.com/gorilla/websocket v1.5.0
 	github.com/graph-gophers/graphql-go v1.3.0
@@ -71,7 +70,9 @@ require (
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
+	github.com/dop251/goja v0.0.0-20230605162241-28ee0ee714f3
 	github.com/fatih/structs v1.1.0
+	github.com/khanghh/goja-nodejs v1.0.1
 )
 
 require (
@@ -85,7 +86,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
-	github.com/dlclark/regexp2 v1.4.1-0.20201116162257-a2a8dda75c91 // indirect
+	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/etcd-io/bbolt v1.3.3 // indirect
 	github.com/fortytw2/leaktest v1.3.0 // indirect
 	github.com/go-kit/kit v0.9.0 // indirect
