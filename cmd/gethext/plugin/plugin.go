@@ -155,6 +155,6 @@ func (ctx *sharedCtx) OpenDatabase(prefix string) ethdb.Database {
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
-	PluginName string
+	DataDir    string
 	EventScope event.SubscriptionScope
 }
