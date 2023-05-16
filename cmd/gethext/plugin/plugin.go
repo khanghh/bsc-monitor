@@ -14,12 +14,14 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/task"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -112,7 +114,12 @@ type sharedCtx struct {
 	Monitor MonitorBackend
 	TaskMgr TaskManager
 	Storage map[string]interface{}
+	db      ethdb.Database
 	mtx     sync.RWMutex
+}
+
+func (ctx *sharedCtx) Database() ethdb.Database {
+	return ctx.db
 }
 
 func (ctx *sharedCtx) Set(key string, val interface{}) {
@@ -138,6 +145,12 @@ func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
+	PluginName string
 	EventScope event.SubscriptionScope
 	LoadConfig func(cfg interface{}) error
+}
+
+func (ctx *PluginCtx) OpenDatabase() ethdb.Database {
+	prefix := extdb.PluginDataPrefix(ctx.PluginName)
+	return rawdb.NewTable(ctx.db, string(prefix))
 }
