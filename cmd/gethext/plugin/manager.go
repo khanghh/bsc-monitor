@@ -75,7 +75,10 @@ func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
 	}
 	if plOnload, ok := ifunc.(func(*PluginCtx) Plugin); ok {
 		plname := strings.ReplaceAll(filepath.Base(fullpath), pluginExt, "")
-		plctx := &PluginCtx{sharedCtx: m.ctx}
+		plctx := &PluginCtx{
+			sharedCtx: m.ctx,
+			DataDir:   filepath.Join(m.config.DataDir, plname),
+		}
 		plinstance := plOnload(plctx)
 		plugin := loadedPlugin{
 			ctx:      plctx,
