@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	explorerURL = "https://bscscan.com"
+	explorerURL     = "https://bscscan.com"
+	discordInstance = "DiscordBot"
 )
 
 type discordSender struct {
@@ -75,7 +76,7 @@ func newDiscordSender(bot discordbot.DiscordBot) *discordSender {
 
 func initNotificationSenders(ctx *plugin.PluginCtx) []notificationSender {
 	senders := []notificationSender{}
-	if instance, exist := ctx.Get(discordbot.PluginNamespace); exist {
+	if instance, exist := ctx.Get(discordInstance); exist {
 		bot := instance.(discordbot.DiscordBot)
 		senders = append(senders, newDiscordSender(bot))
 	}
