@@ -106,7 +106,7 @@ func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethere
 		return nil, err
 	}
 
-	pluginManager, err := plugin.NewPluginManager(cfg.Plugins, node, eth.APIBackend, chainMonitor, taskManager)
+	pluginManager, err := plugin.NewPluginManager(cfg.Plugins, diskdb, node, eth.APIBackend, chainMonitor, taskManager)
 	if err != nil {
 		return nil, err
 	}
