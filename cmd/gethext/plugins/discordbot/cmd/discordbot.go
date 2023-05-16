@@ -2,29 +2,40 @@ package main
 
 import (
 	"context"
-	"reflect"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/lus/dgc"
 )
 
 type discordBot struct {
-	Session       *discordgo.Session
-	CmdRouter     *dgc.Router
-	cmdProcessors []discordbot.CommandProcessor
-	ChannelId     string
+	Session   *discordgo.Session
+	CmdRouter *dgc.Router
+	ChannelId string
+	Commands  map[string]*dgc.Command
 }
 
-func (bot *discordBot) RegisterCommand(cmds ...*dgc.Command) {
-	for _, cmd := range cmds {
-		bot.CmdRouter.RegisterCmd(cmd)
+func (bot *discordBot) rebuildRouter() {
+	commands := make([]*dgc.Command, 0)
+	for _, cmd := range bot.Commands {
+		commands = append(commands, cmd)
+	}
+	bot.CmdRouter.Commands = commands
+}
+
+func (bot *discordBot) UnregisterCommand(name string) {
+	if _, ok := bot.Commands[name]; ok {
+		delete(bot.Commands, name)
+		bot.rebuildRouter()
 	}
 }
 
-func (bot *discordBot) AddCommandProcessor(processor discordbot.CommandProcessor) {
-	bot.cmdProcessors = append(bot.cmdProcessors, processor)
+func (bot *discordBot) RegisterCommand(cmds ...dgc.Command) {
+	if len(cmds) > 0 {
+		for _, cmd := range cmds {
+			bot.Commands[cmd.Name] = &cmd
+		}
+		bot.rebuildRouter()
+	}
 }
 
 func (bot *discordBot) SetCmdPrefix(cmdPrefix string) {
@@ -37,22 +48,9 @@ func (bot *discordBot) SendChannelMessage(messgae *discordgo.MessageSend) error 
 }
 
 func (bot *discordBot) Run(ctx context.Context) {
-	for _, processor := range bot.cmdProcessors {
-		processor.RegisterCommands(bot.CmdRouter)
-	}
 	bot.CmdRouter.RegisterDefaultHelpCommand(bot.Session, nil)
 	bot.CmdRouter.Initialize(bot.Session)
-
-	for _, processor := range bot.cmdProcessors {
-		err := processor.OnStartBot(bot.Session)
-		if err != nil {
-			log.Error("Could not initialize plugin", "processor", reflect.TypeOf(processor), "error", err)
-		}
-	}
 	<-ctx.Done()
-	for _, processor := range bot.cmdProcessors {
-		processor.OnStopBot()
-	}
 }
 
 func NewDiscordBot(botToken string, cmdPrefix string, channelId string) (*discordBot, error) {
