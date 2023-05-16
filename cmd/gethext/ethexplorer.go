@@ -7,6 +7,7 @@
 package main
 
 import (
+	"path/filepath"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
@@ -26,6 +27,7 @@ const (
 	extDatabaseHandle = 512
 	extDatabaseCache  = 1024
 	indexerTaskName   = "indexer"
+	pluginsDataDir    = "plugins"
 )
 
 type EthExplorerConfig struct {
@@ -33,6 +35,12 @@ type EthExplorerConfig struct {
 	Plugins     *plugin.PluginsConfig
 	Monitor     *monitor.MonitorConfig
 	Indexer     *monitor.IndexerConfig
+}
+
+func (c *EthExplorerConfig) sanitize() {
+	if len(c.Plugins.DataDir) == 0 {
+		c.Plugins.DataDir = filepath.Join(c.InstanceDir, pluginsDataDir)
+	}
 }
 
 type EthExplorer struct {
