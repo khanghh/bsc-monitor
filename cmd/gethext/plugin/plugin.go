@@ -109,12 +109,13 @@ type TaskManager interface {
 // sharedCtx exposes common useful modules for the plugin to
 // implement its own business
 type sharedCtx struct {
+	db      ethdb.Database
+	config  *ConfigStore
 	Node    *node.Node
 	Eth     EthBackend
 	Monitor MonitorBackend
 	TaskMgr TaskManager
 	Storage map[string]interface{}
-	db      ethdb.Database
 	mtx     sync.RWMutex
 }
 
@@ -141,16 +142,19 @@ func (ctx *sharedCtx) Get(key string) (interface{}, bool) {
 	return val, ok
 }
 
+func (ctx *sharedCtx) LoadConfig(name string, cfg interface{}) error {
+	return ctx.config.LoadConfig(name, cfg)
+}
+
+func (ctx *sharedCtx) OpenDatabase(prefix string) ethdb.Database {
+	plPrefix := extdb.PluginDataPrefix(prefix)
+	return rawdb.NewTable(ctx.db, string(plPrefix))
+}
+
 // PluginCtx provides access to internal services for a plugin, each plugin
 // has it own context
 type PluginCtx struct {
 	*sharedCtx
 	PluginName string
 	EventScope event.SubscriptionScope
-	LoadConfig func(cfg interface{}) error
-}
-
-func (ctx *PluginCtx) OpenDatabase() ethdb.Database {
-	prefix := extdb.PluginDataPrefix(ctx.PluginName)
-	return rawdb.NewTable(ctx.db, string(prefix))
 }

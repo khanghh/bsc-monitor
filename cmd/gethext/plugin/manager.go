@@ -48,12 +48,10 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	config      *PluginsConfig
-	configStore *configStore
-	jeth        jeth
-	plugins     map[string]*loadedPlugin
-	ctx         *sharedCtx
-	mtx         sync.Mutex
+	config  *PluginsConfig
+	plugins map[string]*loadedPlugin
+	ctx     *sharedCtx
+	mtx     sync.Mutex
 }
 
 func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
@@ -77,12 +75,7 @@ func (m *PluginManager) loadPlugin(filename string) (*loadedPlugin, error) {
 	}
 	if plOnload, ok := ifunc.(func(*PluginCtx) Plugin); ok {
 		plname := strings.ReplaceAll(filepath.Base(fullpath), pluginExt, "")
-		plctx := &PluginCtx{
-			sharedCtx: m.ctx,
-			LoadConfig: func(cfg interface{}) error {
-				return m.configStore.loadConfig(plname, cfg)
-			},
-		}
+		plctx := &PluginCtx{sharedCtx: m.ctx}
 		plinstance := plOnload(plctx)
 		m.plugins[plname] = &loadedPlugin{
 			ctx:      plctx,
@@ -196,14 +189,15 @@ func (m *PluginManager) Stop() error {
 
 func NewPluginManager(config *PluginsConfig, db ethdb.Database, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	pm := &PluginManager{
-		config:      config,
-		configStore: NewConfigStore(pluginConfigPrefix, config.ConfigFile),
-		plugins:     make(map[string]*loadedPlugin),
+		config:  config,
+		plugins: make(map[string]*loadedPlugin),
 		ctx: &sharedCtx{
+			db:      db,
 			Node:    node,
 			Eth:     ethBackend,
 			Monitor: monitorBackend,
 			TaskMgr: taskMgr,
+			config:  NewConfigStore(pluginConfigPrefix, config.ConfigFile),
 		},
 	}
 	if err := pm.loadPlugins(); err != nil {

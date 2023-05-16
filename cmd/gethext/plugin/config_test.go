@@ -13,7 +13,7 @@ func TestConfigStore(t *testing.T) {
 		Field2 string
 	}
 	cfg := DemoConfig{}
-	if err := configStore.loadConfig("Demo", &cfg); err != nil {
+	if err := configStore.LoadConfig("Demo", &cfg); err != nil {
 		panic(err)
 	}
 	assert.Equal(t, true, cfg.Field1)
