@@ -30,6 +30,7 @@ var (
 	FourBytesMethodPrefix   = []byte("4")   // FourBytesMethodPrefix + 4 bytes sig -> list of method abis
 	InterfaceABIPrefix      = []byte("I")   // InterfaceABIPrefix + name + InterfaceABISuffix -> contract interface ABI
 	InterfaceABISuffix      = []byte("abi") // InterfaceABISuffix suffix of interface ABI key. e.g: IERC20abi -> ERC20 interface ABI
+	PluginDataKeyPrefix     = []byte("p")   // PluginDataKeyPrefix + plugin name + key -> value
 )
 
 var (
@@ -96,4 +97,11 @@ func InterfaceABIKey(name string) []byte {
 	key = append(key, name...)
 	key = append(key, InterfaceABISuffix...)
 	return key
+}
+
+func PluginDataPrefix(plName string) []byte {
+	ret := make([]byte, len(PluginDataKeyPrefix)+len(plName))
+	copy(ret, PluginDataKeyPrefix)
+	copy(ret[len(PluginDataKeyPrefix):], plName)
+	return ret
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 )
@@ -49,6 +50,7 @@ type loadedPlugin struct {
 type PluginManager struct {
 	config      *PluginsConfig
 	configStore *configStore
+	jeth        jeth
 	plugins     map[string]*loadedPlugin
 	ctx         *sharedCtx
 	mtx         sync.Mutex
@@ -192,7 +194,7 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(config *PluginsConfig, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
+func NewPluginManager(config *PluginsConfig, db ethdb.Database, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	pm := &PluginManager{
 		config:      config,
 		configStore: NewConfigStore(pluginConfigPrefix, config.ConfigFile),
