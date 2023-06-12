@@ -1,11 +1,15 @@
 package main
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/khanghh/goja-nodejs/require"
 )
@@ -35,10 +39,23 @@ func rootDirFileLoader(rootDir string) require.SourceLoader {
 	}
 }
 
+// makeDirIfNotExist recursively creates directories from the given path if does not exist
 func makeDirIfNotExist(dirname string) error {
 	_, err := os.Stat(dirname)
 	if err != nil && os.IsNotExist(err) {
 		return os.Mkdir(dirname, 0755)
 	}
 	return err
+}
+
+// randomSource returns a pseudo random value generator.
+func randomSource() *rand.Rand {
+	bytes := make([]byte, 8)
+	seed := time.Now().UnixNano()
+	if _, err := crand.Read(bytes); err == nil {
+		seed = int64(binary.LittleEndian.Uint64(bytes))
+	}
+
+	src := rand.NewSource(seed)
+	return rand.New(src)
 }

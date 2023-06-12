@@ -13,9 +13,21 @@ type RunnerState int32
 
 const (
 	StateStopped RunnerState = iota
-	StateRunnig
+	StateRunning
 	StateInterrupted
 )
+
+func (s RunnerState) String() string {
+	switch s {
+	case StateStopped:
+		return "stopped"
+	case StateInterrupted:
+		return "interupted"
+	case StateRunning:
+		return "running"
+	}
+	return "unknown"
+}
 
 // JsRunner represents a JavaScript runner instance.
 // It manages the execution of JavaScript code within a Goja runtime environment,
@@ -24,28 +36,28 @@ type JsRunner struct {
 	Name    string               // A unique identifier for the runner instance
 	runtime *goja.Runtime        // The Goja JavaScript runtime for executing code
 	loop    *eventloop.EventLoop // The Goja JavaScript event loop
-	state   RunnerState
-	term    chan struct{}
+	state   RunnerState          // Current state of the runner
+	stopCh  chan struct{}
 }
 
-func (r *JsRunner) Status() string {
-	switch r.state {
-	case StateStopped:
-		return "stopped"
-	case StateInterrupted:
-		return "interupted"
-	case StateRunnig:
-		return "running"
-	}
-	return "unknown"
+func (r *JsRunner) CurrentState() RunnerState {
+	return RunnerState(atomic.LoadInt32((*int32)(&r.state)))
 }
 
-func (r *JsRunner) Wait() error {
-	<-r.term
-	return nil
+func (r *JsRunner) Running() bool {
+	return r.CurrentState() == StateRunning
+}
+
+func (r *JsRunner) Wait() {
+	<-r.stopCh
 }
 
 func (r *JsRunner) Stop() error {
+	if !atomic.CompareAndSwapInt32((*int32)(&r.state), int32(StateRunning), int32(StateInterrupted)) {
+		return fmt.Errorf("not running")
+	}
+	r.loop.Stop()
+	close(r.stopCh)
 	return nil
 }
 
@@ -61,28 +73,31 @@ func (r *JsRunner) Stop() error {
 //
 // When requiring another module (e.g., require('./moduleA')),
 // it will resolve to a file named "moduleA.js" within the current directory (e.g., "./path/to/module/moduleA.js").
-func (r *JsRunner) CompileAndRun(filename, code string) error {
-	if !atomic.CompareAndSwapInt32((*int32)(&r.state), int32(StateStopped), int32(StateRunnig)) {
-		return fmt.Errorf("runner is busy")
+func (r *JsRunner) CompileAndRun(filename, code string) (ret goja.Value, err error) {
+	state := atomic.LoadInt32((*int32)(&r.state))
+	if state == int32(StateRunning) {
+		return nil, fmt.Errorf("runner is busy")
 	}
-	r.term = make(chan struct{})
+	atomic.StoreInt32((*int32)(&r.state), int32(StateRunning))
+	r.stopCh = make(chan struct{})
 	r.loop.Run(func(vm *goja.Runtime) {
-		_, err := vm.RunScript(filename, code)
-		if err != nil {
-			fmt.Println("error", err)
-		}
-		close(r.term)
+		ret, err = vm.RunScript(filename, code)
 	})
-	<-r.term
-	return nil
+	if !atomic.CompareAndSwapInt32((*int32)(&r.state), int32(StateRunning), int32(StateStopped)) {
+		return nil, fmt.Errorf("interrupted")
+	}
+	close(r.stopCh)
+	return ret, err
 }
 
 func newRunner(name string, registry *require.Registry) *JsRunner {
 	loop := eventloop.NewEventLoop(eventloop.WithRegistry(registry))
+	runtime := loop.Runtime()
+	runtime.SetRandSource(randomSource().Float64)
 	return &JsRunner{
 		Name:    name,
-		runtime: loop.Runtime(),
+		runtime: runtime,
 		loop:    loop,
-		term:    make(chan struct{}),
+		stopCh:  make(chan struct{}),
 	}
 }
