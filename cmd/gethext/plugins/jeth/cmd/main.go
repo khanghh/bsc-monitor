@@ -26,40 +26,73 @@ type JETH struct {
 	runCount uint64               // The counter used to uniquely identify a runner instance
 	runners  map[uint64]*JsRunner // All javascript runner that have been added
 	registry *require.Registry    // Native module registry to register golang module into goja javascript runtime
+	mtx      sync.Mutex           // Runners list modification lock
 }
 
-func (p *JETH) createRunner() *JsRunner {
+func (p *JETH) createNewRunner() *JsRunner {
 	runnerId := atomic.AddUint64(&p.runCount, 1)
 	runnerName := fmt.Sprintf("jeth%d-%d", runnerId, time.Now().Unix())
-	return newRunner(runnerName, p.registry)
+	p.runners[runnerId] = newRunner(runnerName, p.registry)
+	return p.runners[runnerId]
 }
 
-// Run execute JavaScript code
+// Execute compiles and executes input JavaScript code
 func (p *JETH) Execute(code string) (*JsRunner, error) {
-	return nil, nil
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	runner := p.createNewRunner()
+	filename := fmt.Sprintf("%s.js", runner.Name)
+	_, err := runner.CompileAndRun(filename, code)
+	return runner, err
 }
 
-// Run load and execute JavaScript code from file
+// Run load and execute JavaScript code from a file
 func (p *JETH) Run(filename string) (*JsRunner, error) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	filepath := path.Join(p.rootDir, filename)
 	code, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
 	}
-	runner := p.createRunner()
-	runner.CompileAndRun(filepath, string(code))
-	return runner, nil
+	runner := p.createNewRunner()
+	_, err = runner.CompileAndRun(filepath, string(code))
+	return runner, err
+}
+
+// CleanUp removes non-running JavaScript runner from the list and return the removed count
+func (p *JETH) CleanUp() int {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	count := 0
+	for id, runner := range p.runners {
+		if !runner.Running() {
+			delete(p.runners, id)
+			count++
+		}
+	}
+	return count
+}
+
+// Kill stops the specified running JavaScript runner by its id
+func (p *JETH) Kill(runnerId uint64) error {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if runner, ok := p.runners[runnerId]; ok {
+		return runner.Stop()
+	}
+	return nil
 }
 
 func (p *JETH) Stop() error {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
 	wg := sync.WaitGroup{}
 	for _, runner := range p.runners {
 		wg.Add(1)
 		go func(runner *JsRunner) {
 			defer wg.Done()
-			if err := runner.Stop(); err != nil {
-				logger.Error("Runner stopped with error", "error", err)
-			}
+			runner.Stop()
 		}(runner)
 	}
 	wg.Wait()
