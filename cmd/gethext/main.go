@@ -72,6 +72,7 @@ var (
 		utils.DisableSnapProtocolFlag,
 		utils.DisableDiffProtocolFlag,
 		utils.EnableTrustProtocolFlag,
+		utils.DisableBscProtocolFlag,
 		utils.DiffSyncFlag,
 		utils.PipeCommitFlag,
 		utils.RangeLimitFlag,
@@ -168,6 +169,11 @@ var (
 		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
+		utils.VotingEnabledFlag,
+		utils.EnableMaliciousVoteMonitorFlag,
+		utils.BLSPasswordFileFlag,
+		utils.BLSWalletDirFlag,
+		utils.VoteJournalDirFlag,
 	}
 
 	rpcFlags = []cli.Flag{
@@ -258,6 +264,7 @@ func init() {
 		utils.ShowDeprecated,
 		// See snapshot.go
 		snapshotCommand,
+		blsCommand,
 		extdbCommand,
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
