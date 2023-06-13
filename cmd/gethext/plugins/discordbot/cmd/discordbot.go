@@ -71,5 +71,6 @@ func NewDiscordBot(botToken string, cmdPrefix string, channelId string) (*discor
 		Session:   botSession,
 		CmdRouter: cmdRouter,
 		ChannelId: channelId,
+		Commands:  make(map[string]*dgc.Command),
 	}, nil
 }

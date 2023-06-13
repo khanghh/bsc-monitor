@@ -6,7 +6,7 @@ import (
 )
 
 type DiscordBot interface {
-	RegisterCommand(cmd ...*dgc.Command)
+	RegisterCommand(cmd ...dgc.Command)
 	UnregisterCommand(name string)
 	SendChannelMessage(messgae *discordgo.MessageSend) error
 }
