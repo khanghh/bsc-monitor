@@ -638,12 +638,15 @@ func traverseRawState(ctx *cli.Context) error {
 		return err
 	}
 	var (
-		nodes      int
-		accounts   int
-		slots      int
-		codes      int
-		lastReport time.Time
-		start      = time.Now()
+		stateSize   common.StorageSize
+		storageSize common.StorageSize
+		codeSize    common.StorageSize
+		nodes       int
+		accounts    int
+		slots       int
+		codes       int
+		lastReport  time.Time
+		start       = time.Now()
 	)
 	accIter := t.NodeIterator(nil)
 	for accIter.Next(true) {
@@ -658,6 +661,8 @@ func traverseRawState(ctx *cli.Context) error {
 				return errors.New("missing account")
 			}
 		}
+		nodeData := rawdb.ReadTrieNode(chaindb, node)
+		stateSize += common.StorageSize(len(node) + len(nodeData))
 		// If it's a leaf node, yes we are touching an account,
 		// dig into the storage trie further.
 		if accIter.Leaf() {
@@ -677,7 +682,6 @@ func traverseRawState(ctx *cli.Context) error {
 				for storageIter.Next(true) {
 					nodes += 1
 					node := storageIter.Hash()
-
 					// Check the present for non-empty hash node(embedded node doesn't
 					// have their own hash).
 					if node != (common.Hash{}) {
@@ -686,6 +690,8 @@ func traverseRawState(ctx *cli.Context) error {
 							return errors.New("missing storage")
 						}
 					}
+					storageData := rawdb.ReadTrieNode(chaindb, node)
+					storageSize += common.StorageSize(len(node) + len(storageData))
 					// Bump the counter if it's leaf node.
 					if storageIter.Leaf() {
 						slots += 1
@@ -701,10 +707,14 @@ func traverseRawState(ctx *cli.Context) error {
 					log.Error("Code is missing", "account", common.BytesToHash(accIter.LeafKey()))
 					return errors.New("missing code")
 				}
+				data := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+				codeSize += common.StorageSize(len(rawdb.CodePrefix) + len(acc.CodeHash) + len(data))
 				codes += 1
 			}
 			if time.Since(lastReport) > time.Second*8 {
-				log.Info("Traversing state", "nodes", nodes, "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+				log.Info("Traversing state", "nodes", nodes, "accounts", accounts, "slots", slots, "codes", codes,
+					"stateSize", stateSize, "storageSize", storageSize, "codeSize", codeSize, "totalSize", stateSize+storageSize+codeSize,
+					"elapsed", common.PrettyDuration(time.Since(start)))
 				lastReport = time.Now()
 			}
 		}
@@ -713,7 +723,9 @@ func traverseRawState(ctx *cli.Context) error {
 		log.Error("Failed to traverse state trie", "root", root, "err", accIter.Error())
 		return accIter.Error()
 	}
-	log.Info("State is complete", "nodes", nodes, "accounts", accounts, "slots", slots, "codes", codes, "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("State is complete", "nodes", nodes, "accounts", accounts, "slots", slots, "codes", codes,
+		"stateSize", stateSize, "storageSize", storageSize, "codeSize", codeSize, "totalSize", stateSize+storageSize+codeSize,
+		"elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
 
