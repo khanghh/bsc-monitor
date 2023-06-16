@@ -58,6 +58,14 @@ var (
 )
 
 var (
+	traverseNumWorkersFlags = cli.IntFlag{
+		Name:  "workers",
+		Value: runtime.NumCPU(),
+		Usage: "Number of concurrent worker goroutines to use for state traversal",
+	}
+)
+
+var (
 	snapshotCommand = cli.Command{
 		Name:        "snapshot",
 		Usage:       "A set of commands based on the snapshot",
@@ -204,11 +212,7 @@ It's also usable without snapshot enabled.
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
 					utils.AncientFlag,
-					cli.IntFlag{
-						Name:  "num-routines",
-						Value: runtime.NumCPU(),
-						Usage: "Number of concurrent goroutines to use for state traversal",
-					},
+					traverseNumWorkersFlags,
 				},
 				Description: `
 geth snapshot traverse-rawstate-parallel <state-root>
@@ -786,6 +790,12 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 		root = headBlock.Root()
 		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
 	}
+	numWorkers := ctx.Int(traverseNumWorkersFlags.Name)
+	if numWorkers < 1 {
+		log.Error("Invalid number of state traversal workers")
+		return errors.New("invalid number of workers")
+	}
+
 	triedb := trie.NewDatabase(chaindb)
 	t, err := trie.NewSecure(root, triedb)
 	if err != nil {
@@ -794,7 +804,6 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 	}
 
 	// begin traverse raw state with 8 go-routine
-	const numWorkers = 20
 	type node struct {
 		hash     common.Hash
 		isLeaf   bool
