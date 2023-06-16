@@ -23,6 +23,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/tsdb/fileutil"
@@ -188,6 +191,31 @@ will traverse the whole state from the given root and will abort if any referenc
 trie node or contract code is missing. This command can be used for state integrity
 verification. The default checking target is the HEAD state. It's basically identical
 to traverse-state, but the check granularity is smaller. 
+
+It's also usable without snapshot enabled.
+`,
+			},
+			{
+				Name:      "traverse-rawstate-parallel",
+				Usage:     "Quickly traverse and verify state integrity from a given root hash using parallel processing",
+				ArgsUsage: "<root>",
+				Action:    utils.MigrateFlags(traverseRawStateConcurent),
+				Category:  "MISCELLANEOUS COMMANDS",
+				Flags: []cli.Flag{
+					utils.DataDirFlag,
+					utils.AncientFlag,
+					cli.IntFlag{
+						Name:  "num-routines",
+						Value: runtime.NumCPU(),
+						Usage: "Number of concurrent goroutines to use for state traversal",
+					},
+				},
+				Description: `
+geth snapshot traverse-rawstate-parallel <state-root>
+will quickly traverse the whole state from the given root and will abort if any referenced 
+trie node or contract code is missing. This command can be used for state integrity 
+verification. The default checking target is the HEAD state. It is designed for fast state 
+traversal by utilizing multiple goroutines and smaller check granularity.
 
 It's also usable without snapshot enabled.
 `,
@@ -660,9 +688,9 @@ func traverseRawState(ctx *cli.Context) error {
 				log.Error("Missing trie node(account)", "hash", node)
 				return errors.New("missing account")
 			}
+			nodeData := rawdb.ReadTrieNode(chaindb, node)
+			stateSize += common.StorageSize(len(node) + len(nodeData))
 		}
-		nodeData := rawdb.ReadTrieNode(chaindb, node)
-		stateSize += common.StorageSize(len(node) + len(nodeData))
 		// If it's a leaf node, yes we are touching an account,
 		// dig into the storage trie further.
 		if accIter.Leaf() {
@@ -689,9 +717,9 @@ func traverseRawState(ctx *cli.Context) error {
 							log.Error("Missing trie node(storage)", "hash", node)
 							return errors.New("missing storage")
 						}
+						storageData := rawdb.ReadTrieNode(chaindb, node)
+						storageSize += common.StorageSize(len(node) + len(storageData))
 					}
-					storageData := rawdb.ReadTrieNode(chaindb, node)
-					storageSize += common.StorageSize(len(node) + len(storageData))
 					// Bump the counter if it's leaf node.
 					if storageIter.Leaf() {
 						slots += 1
@@ -725,6 +753,173 @@ func traverseRawState(ctx *cli.Context) error {
 	}
 	log.Info("State is complete", "nodes", nodes, "accounts", accounts, "slots", slots, "codes", codes,
 		"stateSize", stateSize, "storageSize", storageSize, "codeSize", codeSize, "totalSize", stateSize+storageSize+codeSize,
+		"elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func traverseRawStateConcurent(ctx *cli.Context) error {
+	stack := newNode(ctx, loadConfig(ctx))
+	defer stack.Close()
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	headBlock := rawdb.ReadHeadBlock(chaindb)
+	if headBlock == nil {
+		log.Error("Failed to load head block")
+		return errors.New("no head block")
+	}
+	if ctx.NArg() > 1 {
+		log.Error("Too many arguments given")
+		return errors.New("too many arguments")
+	}
+	var (
+		root common.Hash
+		err  error
+	)
+	if ctx.NArg() == 1 {
+		root, err = parseRoot(ctx.Args()[0])
+		if err != nil {
+			log.Error("Failed to resolve state root", "err", err)
+			return err
+		}
+		log.Info("Start traversing the state", "root", root)
+	} else {
+		root = headBlock.Root()
+		log.Info("Start traversing the state", "root", root, "number", headBlock.NumberU64())
+	}
+	triedb := trie.NewDatabase(chaindb)
+	t, err := trie.NewSecure(root, triedb)
+	if err != nil {
+		log.Error("Failed to open trie", "root", root, "err", err)
+		return err
+	}
+
+	// begin traverse raw state with 8 go-routine
+	const numWorkers = 20
+	type node struct {
+		hash     common.Hash
+		isLeaf   bool
+		leafKey  []byte
+		leafBlob []byte
+	}
+	type task struct {
+		node      *node
+		isStorage bool
+	}
+	var (
+		stateSize    uint64
+		storageSize  uint64
+		codeSize     uint64
+		stateNodes   uint64
+		storageNodes uint64
+		accounts     uint64
+		slots        uint64
+		codes        uint64
+		start        = time.Now()
+		tasks        = make(chan task, 1000)
+		stateWG      sync.WaitGroup
+		storageWG    sync.WaitGroup
+	)
+
+	// iterater over all trie nodes and produce tasks
+	iterateTrieNode := func(it trie.NodeIterator, isStorage bool) error {
+		for it.Next(true) {
+			node := node{
+				hash:   it.Hash(),
+				isLeaf: it.Leaf(),
+			}
+			if it.Leaf() {
+				node.leafKey = it.LeafKey()
+				node.leafBlob = it.LeafBlob()
+			}
+			tasks <- task{&node, isStorage}
+		}
+		return it.Error()
+	}
+
+	processNode := func(n *node, isStorage bool) (err error) {
+		if n.hash != (common.Hash{}) {
+			if !rawdb.HasTrieNode(chaindb, n.hash) {
+				log.Error("Missing trie node", "hash", n, "isStorage", isStorage)
+				return errors.New("missing trie node")
+			}
+			nodeData := rawdb.ReadTrieNode(chaindb, n.hash)
+			if isStorage {
+				atomic.AddUint64(&storageNodes, 1)
+				atomic.AddUint64(&storageSize, uint64(len(n.hash)+len(nodeData)))
+			} else {
+				atomic.AddUint64(&stateNodes, 1)
+				atomic.AddUint64(&stateSize, uint64(len(n.hash)+len(nodeData)))
+			}
+		}
+		if n.isLeaf && isStorage {
+			atomic.AddUint64(&slots, 1)
+		} else if n.isLeaf && !isStorage {
+			atomic.AddUint64(&accounts, 1)
+			var acc types.StateAccount
+			if err := rlp.DecodeBytes(n.leafBlob, &acc); err != nil {
+				log.Error("Invalid account encountered during traversal", "err", err)
+				return errors.New("invalid account")
+			}
+			if !bytes.Equal(acc.CodeHash, emptyCode) {
+				if !rawdb.HasCode(chaindb, common.BytesToHash(acc.CodeHash)) {
+					log.Error("Code is missing", "account", common.BytesToHash(n.leafKey))
+					return errors.New("missing code")
+				}
+				atomic.AddUint64(&codes, 1)
+				data := rawdb.ReadCode(chaindb, common.BytesToHash(acc.CodeHash))
+				atomic.AddUint64(&codeSize, uint64(len(rawdb.CodePrefix)+len(acc.CodeHash)+len(data)))
+			}
+			if acc.Root != emptyRoot {
+				storageTrie, err := trie.NewSecure(acc.Root, triedb)
+				if err != nil {
+					log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
+					return errors.New("missing storage trie")
+				}
+				storageWG.Add(1)
+				go func() {
+					defer storageWG.Done()
+					if err := iterateTrieNode(storageTrie.NodeIterator(nil), true); err != nil {
+						log.Error("Failed to traverse storage trie", "root", acc.Root, "err", err)
+						utils.Fatalf("error", err)
+					}
+				}()
+			}
+		}
+		return nil
+	}
+
+	// start all workers to consume tasks
+	for i := 0; i < numWorkers; i++ {
+		stateWG.Add(1)
+		go func() {
+			defer stateWG.Done()
+			for t := range tasks {
+				if err := processNode(t.node, t.isStorage); err != nil {
+					log.Error("Error processing node", "err", err)
+					utils.Fatalf("error", err)
+				}
+			}
+		}()
+	}
+
+	go func() {
+		ticker := time.NewTicker(8 * time.Second)
+		for range ticker.C {
+			log.Info("Traversing state", "stateNodes", stateNodes, "storageNodes", storageNodes, "accounts", accounts, "slots", slots, "codes", codes,
+				"stateSize", common.StorageSize(stateSize), "storageSize", common.StorageSize(storageSize), "codeSize", common.StorageSize(codeSize), "totalSize", common.StorageSize(stateSize+storageSize+codeSize),
+				"elapsed", common.PrettyDuration(time.Since(start)))
+		}
+	}()
+	if err := iterateTrieNode(t.NodeIterator(nil), false); err != nil {
+		log.Error("Failed to traverse state trie", "root", root, "err", err)
+		return err
+	}
+	close(tasks)
+	// wait for all tasks to finished
+	stateWG.Wait()
+	storageWG.Wait()
+	log.Info("State is complete", "stateNodes", stateNodes, "storageNodes", storageNodes, "accounts", accounts, "slots", slots, "codes", codes,
+		"stateSize", common.StorageSize(stateSize), "storageSize", common.StorageSize(storageSize), "codeSize", common.StorageSize(codeSize), "totalSize", common.StorageSize(stateSize+storageSize+codeSize),
 		"elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
