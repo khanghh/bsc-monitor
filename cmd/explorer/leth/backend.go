@@ -52,6 +52,7 @@ type LightEthereum struct {
 
 func (leth *LightEthereum) Start(ctx service.Context) error {
 	leth.shutdownTracker.Start()
+	ctx.RegisterAPIs(leth.APIs())
 	return leth.hanlder.Start()
 }
 

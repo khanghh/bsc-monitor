@@ -7,10 +7,19 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// Context provides an interface for lifecycle to do start/stop operations.
 type Context interface {
+	// RegisterAPIs registers RPC APIs to the HTTP/WS RPC endpoints.
 	RegisterAPIs(api []rpc.API)
-	RegisterHandler(handler []http.Handler)
+
+	// RegisterHandler mounts a handler on the given path on the canonical HTTP server.
+	RegisterHandler(name, path string, handler http.Handler)
+
+	// OpenDatabase opens an existing database with the given name (or creates one if none
+	// previously exists) within the data directory.
 	OpenDatabase(name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error)
+
+	// Database is a getter for the opened database by namespace.
 	Database(namespace string) (ethdb.Database, error)
 }
 
@@ -26,4 +35,13 @@ type Lifecycle interface {
 	// Stop terminates all goroutines belonging to the service, blocking until they
 	// are all terminated.
 	Stop(ctx Context) error
+}
+
+func containsLifecycle(lfs []Lifecycle, l Lifecycle) bool {
+	for _, obj := range lfs {
+		if obj == l {
+			return true
+		}
+	}
+	return false
 }
