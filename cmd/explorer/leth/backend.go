@@ -50,12 +50,12 @@ type LightEthereum struct {
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 }
 
-func (leth *LightEthereum) Start(ctx *service.Context) error {
+func (leth *LightEthereum) Start(ctx service.Context) error {
 	leth.shutdownTracker.Start()
 	return leth.hanlder.Start()
 }
 
-func (leth *LightEthereum) Stop(ctx *service.Context) error {
+func (leth *LightEthereum) Stop(ctx service.Context) error {
 	if err := leth.hanlder.Stop(); err != nil {
 		return err
 	}
