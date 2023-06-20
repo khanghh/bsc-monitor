@@ -8,13 +8,16 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/explorer/leth"
+	"github.com/ethereum/go-ethereum/cmd/explorer/service"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/urfave/cli/v2"
+	"github.com/ethereum/go-ethereum/metrics"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
@@ -29,70 +32,123 @@ var (
 func init() {
 	app = cli.NewApp()
 	app.Name = filepath.Base(os.Args[0])
-	app.Usage = "Ethereum blockchain monitor service"
+	app.Usage = "Binance Smart Chain explorer service"
 	app.Version = fmt.Sprintf("%s - %s ", gitCommit, gitDate)
 	app.Flags = []cli.Flag{
+		configFileFlag,
 		rpcUrlFlag,
 		genesisFlag,
-		dataDirFlag,
-		verbosityFlag,
+		utils.DataDirFlag,
 	}
+	app.Flags = append(app.Flags, debug.Flags...)
+
 	app.Action = run
+	app.Before = func(ctx *cli.Context) error {
+		return debug.Setup(ctx)
+	}
+	app.After = func(ctx *cli.Context) error {
+		debug.Exit()
+		prompt.Stdin.Close() // Resets terminal mode.
+		return nil
+	}
 }
 
-func initLogger(verbosity int) {
-	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(true)))
-	glogger.Verbosity(log.Lvl(verbosity))
-	log.Root().SetHandler(glogger)
+// makeGenesis will load the given genesis file if specified otherwise return default genesis config
+func makeGenesis(ctx *cli.Context) *core.Genesis {
+	genesisPath := ctx.String(genesisFlag.Name)
+	if len(genesisPath) != 0 {
+		file, err := os.Open(genesisPath)
+		if err != nil {
+			utils.Fatalf("Failed to read genesis file: %v", err)
+		}
+		defer file.Close()
+		genesis := new(core.Genesis)
+		if err := json.NewDecoder(file).Decode(genesis); err != nil {
+			utils.Fatalf("invalid genesis file: %v", err)
+		}
+		log.Info("Use custom genesis file", "genesis", genesisPath)
+		return genesis
+	}
+	log.Info("Use default mainnet genesis configuration")
+	return core.DefaultGenesisBlock()
 }
 
-// loadGenesis will load the given JSON format genesis file
-func loadGenesis(genesisPath string) *core.Genesis {
-	if len(genesisPath) == 0 {
-		utils.Fatalf("Must supply path to genesis file")
+// makeAppConfig reads the provide TOML configuration file, if config file is
+// not sepcified default config is used.
+//
+// Returns a sanitized appConfig instance to be used by the application.
+func makeAppConfig(ctx *cli.Context) *appConfig {
+	configFile := ctx.String(configFileFlag.Name)
+	config := appConfig{
+		LEth:    leth.DefaultConfig,
+		Service: service.DefaultConfig,
+		Metrics: metrics.DefaultConfig,
 	}
-	file, err := os.Open(genesisPath)
-	if err != nil {
-		utils.Fatalf("Failed to read genesis file: %v", err)
+	if configFile != "" {
+		if err := loadTOMLConfig(configFile, &config); err != nil {
+			utils.Fatalf("Could not load config file %s: %v", configFile, err)
+		}
 	}
-	defer file.Close()
+	config.LEth.Genesis = makeGenesis(ctx)
 
-	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
-		utils.Fatalf("invalid genesis file: %v", err)
+	// override config with cli flags
+	rpcUrl := ctx.String(rpcUrlFlag.Name)
+	if rpcUrl != "" {
+		config.LEth.RPCUrl = rpcUrl
 	}
-	return genesis
+
+	dataDir := ctx.String(utils.DataDirFlag.Name)
+	if dataDir != "" {
+		config.Service.DataDir = dataDir
+	}
+
+	return &config
+}
+
+// runServiceStack initialize http/ws rpcservice and start all lifecycle registered in the stack
+func runServiceStack(stack *service.ServiceStack) error {
+	if err := stack.Run(); err != nil {
+		utils.Fatalf("Error starting protocol stack: %v", err)
+	}
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(sigCh)
+
+		shutdown := func() {
+			log.Info("Got interrupt, shutting down...")
+			go stack.Stop()
+			for i := 10; i > 0; i-- {
+				<-sigCh
+				if i > 1 {
+					log.Warn("Already shutting down, interrupt more to panic.", "times", i-1)
+				}
+			}
+			debug.Exit() // ensure trace and CPU profile data is flushed.
+			debug.LoudPanic("boom")
+		}
+
+		<-sigCh
+		shutdown()
+	}()
+	return stack.Wait()
 }
 
 func run(ctx *cli.Context) error {
-	initLogger(ctx.Int(verbosityFlag.Name))
-	rpcUrl := ctx.String(rpcUrlFlag.Name)
-	dataDir := ctx.String(dataDirFlag.Name)
-	genesis := loadGenesis(ctx.String(genesisFlag.Name))
-	lethConfig := &leth.Config{
-		RPCUrl:          rpcUrl,
-		Genesis:         genesis,
-		DataDir:         dataDir,
-		DatabaseCache:   512,
-		DatabaseHandles: utils.MakeDatabaseHandles(),
-		RPCGasCap:       50000000,
-		RPCEVMTimeout:   5 * time.Second,
-	}
-	leth, err := leth.NewLightEthereum(lethConfig)
+	config := makeAppConfig(ctx)
+
+	leth, err := leth.NewLightEthereum(&config.LEth)
 	if err != nil {
 		return err
 	}
-	if err := leth.Start(); err != nil {
-		leth.Stop()
+
+	stack, err := service.NewServiceStack(&config.Service)
+	if err != nil {
 		return err
 	}
-	// stop monitoring if receive interupt signal
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-	log.Info("Got interrupt, shutting down...")
-	leth.Stop()
-	return nil
+
+	stack.RegisterLifeCycle(leth)
+	return runServiceStack(stack)
 }
 
 func main() {
