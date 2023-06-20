@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/urfave/cli/v2"
+	"gopkg.in/urfave/cli.v1"
 )
 
 const (
@@ -9,29 +9,17 @@ const (
 )
 
 var (
+	configFileFlag = cli.StringFlag{
+		Name:  "config",
+		Usage: "TOML configuration file",
+	}
 	rpcUrlFlag = &cli.StringFlag{
 		Name:  "rpcurl",
-		Usage: "Ethereum node RPC url",
+		Usage: "Ethereum node RPC url, prefer a websocket RPC url",
 		Value: "ws://localhost:8546",
 	}
 	genesisFlag = &cli.StringFlag{
 		Name:  "genesis",
-		Usage: "Genesis file",
-		Value: "genesis.json",
-	}
-	dataDirFlag = &cli.StringFlag{
-		Name:  "datadir",
-		Usage: "chain data directory",
-		Value: "chaindata",
-	}
-	verbosityFlag = &cli.IntFlag{
-		Name:  "verbosity",
-		Usage: "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail",
-		Value: 3,
+		Usage: "Path to the genesis json file. If not specified default mainnet genesis are used",
 	}
 )
-
-func init() {
-	cli.HelpFlag.(*cli.BoolFlag).Category = MiscCategory
-	cli.VersionFlag.(*cli.BoolFlag).Category = MiscCategory
-}

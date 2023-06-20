@@ -21,7 +21,7 @@ import (
 	gopsutil "github.com/shirou/gopsutil/mem"
 )
 
-var defaultConfig = &Config{
+var DefaultConfig = Config{
 	TxPool: core.DefaultTxPoolConfig,
 
 	DatabaseCache:    512,
@@ -91,19 +91,19 @@ func loadGenesis(genesisPath string) (*core.Genesis, error) {
 	return genesis, nil
 }
 
-func (cfg *Config) Sanitize() (*Config, error) {
-	if len(cfg.RPCUrl) == 0 {
+func (config *Config) Sanitize() (*Config, error) {
+	if len(config.RPCUrl) == 0 {
 		return nil, errors.New("rpc url must be provided")
 	}
-	if len(cfg.GenesisFile) == 0 {
+	if len(config.GenesisFile) == 0 {
 		return nil, errors.New("genesis file must be provided")
 	}
 	var err error
-	if cfg.Genesis, err = loadGenesis(cfg.GenesisFile); err != nil {
+	if config.Genesis, err = loadGenesis(config.GenesisFile); err != nil {
 		return nil, err
 	}
 	// Cap the totalCache allowance and tune the garbage collector
-	totalCache := cfg.CacheMemory
+	totalCache := config.CacheMemory
 	mem, err := gopsutil.VirtualMemory()
 	if err == nil {
 		if 32<<(^uintptr(0)>>63) == 32 && mem.Total > 2*1024*1024*1024 {
@@ -123,53 +123,53 @@ func (cfg *Config) Sanitize() (*Config, error) {
 	godebug.SetGCPercent(int(gogc))
 
 	if totalCache > 0 {
-		cfg.DatabaseCache = 40 * cfg.CacheMemory / 100
-		cfg.TrieCleanCache = 15 * cfg.CacheMemory / 100
-		cfg.TrieDirtyCache = 25 * cfg.CacheMemory / 100
-		cfg.SnapshotCache = cfg.CacheMemory - cfg.DatabaseCache - cfg.TrieCleanCache - cfg.TrieDirtyCache
+		config.DatabaseCache = 40 * config.CacheMemory / 100
+		config.TrieCleanCache = 15 * config.CacheMemory / 100
+		config.TrieDirtyCache = 25 * config.CacheMemory / 100
+		config.SnapshotCache = config.CacheMemory - config.DatabaseCache - config.TrieCleanCache - config.TrieDirtyCache
 	}
 
 	// sanitize database options
-	if cfg.DatabaseHandles == 0 {
-		cfg.DatabaseHandles = utils.MakeDatabaseHandles()
+	if config.DatabaseHandles == 0 {
+		config.DatabaseHandles = utils.MakeDatabaseHandles()
 	}
-	if cfg.DatabaseCache == 0 {
-		cfg.DatabaseCache = defaultConfig.DatabaseCache
+	if config.DatabaseCache == 0 {
+		config.DatabaseCache = DefaultConfig.DatabaseCache
 	}
 
 	// sanitize EVM options
-	if cfg.RPCGasCap == 0 {
-		cfg.RPCGasCap = defaultConfig.RPCGasCap
+	if config.RPCGasCap == 0 {
+		config.RPCGasCap = DefaultConfig.RPCGasCap
 	}
-	if cfg.RPCEVMTimeout == 0 {
-		cfg.RPCEVMTimeout = defaultConfig.RPCEVMTimeout
+	if config.RPCEVMTimeout == 0 {
+		config.RPCEVMTimeout = DefaultConfig.RPCEVMTimeout
 	}
 
 	// sanitize trie cache config
-	if cfg.TrieCleanCache == 0 {
-		cfg.TrieCleanCache = defaultConfig.TrieCleanCache
+	if config.TrieCleanCache == 0 {
+		config.TrieCleanCache = DefaultConfig.TrieCleanCache
 	}
-	if len(cfg.TrieCleanCacheJournal) == 0 {
-		cfg.TrieCleanCacheJournal = defaultConfig.TrieCleanCacheJournal
+	if len(config.TrieCleanCacheJournal) == 0 {
+		config.TrieCleanCacheJournal = DefaultConfig.TrieCleanCacheJournal
 	}
-	if cfg.TrieCleanCacheRejournal == 0 {
-		cfg.TrieCleanCacheRejournal = defaultConfig.TrieCleanCacheRejournal
+	if config.TrieCleanCacheRejournal == 0 {
+		config.TrieCleanCacheRejournal = DefaultConfig.TrieCleanCacheRejournal
 	}
-	if cfg.TrieDirtyCache == 0 {
-		cfg.TrieDirtyCache = defaultConfig.TrieDirtyCache
+	if config.TrieDirtyCache == 0 {
+		config.TrieDirtyCache = DefaultConfig.TrieDirtyCache
 	}
-	if cfg.TrieTimeout == 0 {
-		cfg.TrieTimeout = defaultConfig.TrieTimeout
+	if config.TrieTimeout == 0 {
+		config.TrieTimeout = DefaultConfig.TrieTimeout
 	}
-	if cfg.SnapshotCache == 0 {
-		cfg.SnapshotCache = defaultConfig.SnapshotCache
+	if config.SnapshotCache == 0 {
+		config.SnapshotCache = DefaultConfig.SnapshotCache
 	}
-	if cfg.TriesInMemory == 0 {
-		cfg.TriesInMemory = defaultConfig.TriesInMemory
+	if config.TriesInMemory == 0 {
+		config.TriesInMemory = DefaultConfig.TriesInMemory
 	}
-	if cfg.TriesVerifyMode == 0 {
-		cfg.TriesVerifyMode = defaultConfig.TriesVerifyMode
+	if config.TriesVerifyMode == 0 {
+		config.TriesVerifyMode = DefaultConfig.TriesVerifyMode
 	}
 
-	return cfg, nil
+	return config, nil
 }
