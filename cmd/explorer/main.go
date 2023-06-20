@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -13,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/explorer/service"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/console/prompt"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -51,26 +49,6 @@ func init() {
 		prompt.Stdin.Close() // Resets terminal mode.
 		return nil
 	}
-}
-
-// makeGenesis will load the given genesis file if specified otherwise return default genesis config
-func makeGenesis(ctx *cli.Context) *core.Genesis {
-	genesisPath := ctx.String(genesisFlag.Name)
-	if len(genesisPath) != 0 {
-		file, err := os.Open(genesisPath)
-		if err != nil {
-			utils.Fatalf("Failed to read genesis file: %v", err)
-		}
-		defer file.Close()
-		genesis := new(core.Genesis)
-		if err := json.NewDecoder(file).Decode(genesis); err != nil {
-			utils.Fatalf("invalid genesis file: %v", err)
-		}
-		log.Info("Use custom genesis file", "genesis", genesisPath)
-		return genesis
-	}
-	log.Info("Use default mainnet genesis configuration")
-	return core.DefaultGenesisBlock()
 }
 
 // makeAppConfig reads the provide TOML configuration file, if config file is

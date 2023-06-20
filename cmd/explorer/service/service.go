@@ -28,12 +28,13 @@ const (
 type ServiceStack struct {
 	rpcAPIs    []rpc.API                     // List of APIs currently provided by the node
 	lifecycles []Lifecycle                   // All registered backends, services, and auxiliary services that have a lifecycle
-	state      int32                         // Tracks the current state of the service (0 - stopped, 1 - running)
+	state      int32                         // Tracks the current state of the service
 	databases  map[*closeTrackingDB]struct{} // All open databases
 
 	lock     sync.Mutex
 	quitCh   chan struct{}
 	quitLock sync.Mutex
+	term     chan struct{}
 }
 
 func (s *ServiceStack) Run() error {
@@ -58,6 +59,7 @@ func (s *ServiceStack) Stop() error {
 }
 
 func (s *ServiceStack) Wait() error {
+	<-s.term
 	return nil
 }
 
