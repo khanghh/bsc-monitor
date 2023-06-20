@@ -7,27 +7,28 @@ import "github.com/ethereum/go-ethereum/ethdb"
 // won't auto-close the database if it is closed by the service that opened it.
 type closeTrackingDB struct {
 	ethdb.Database
-	stack *ServiceStack
+	namespace string
+	stack     *ServiceStack
 }
 
 func (db *closeTrackingDB) Close() error {
 	db.stack.lock.Lock()
-	delete(db.stack.databases, db)
+	delete(db.stack.databases, db.namespace)
 	db.stack.lock.Unlock()
 	return db.Database.Close()
 }
 
 // wrapDatabase ensures the database will be auto-closed when Node is closed.
-func (n *ServiceStack) wrapDatabase(db ethdb.Database) ethdb.Database {
-	wrapper := &closeTrackingDB{db, n}
-	n.databases[wrapper] = struct{}{}
+func (n *ServiceStack) wrapDatabase(namespace string, db ethdb.Database) ethdb.Database {
+	wrapper := &closeTrackingDB{db, namespace, n}
+	n.databases[namespace] = wrapper
 	return wrapper
 }
 
 // closeDatabases closes all open databases.
 func (n *ServiceStack) closeDatabases() (errors []error) {
-	for db := range n.databases {
-		delete(n.databases, db)
+	for name, db := range n.databases {
+		delete(n.databases, name)
 		if err := db.Database.Close(); err != nil {
 			errors = append(errors, err)
 		}

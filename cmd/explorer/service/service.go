@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -26,10 +27,10 @@ const (
 )
 
 type ServiceStack struct {
-	rpcAPIs    []rpc.API                     // List of APIs currently provided by the node
-	lifecycles []Lifecycle                   // All registered backends, services, and auxiliary services that have a lifecycle
-	state      int32                         // Tracks the current state of the service
-	databases  map[*closeTrackingDB]struct{} // All open databases
+	rpcAPIs    []rpc.API                   // List of APIs currently provided by the node
+	lifecycles []Lifecycle                 // All registered backends, services, and auxiliary services that have a lifecycle
+	state      int32                       // Tracks the current state of the service
+	databases  map[string]*closeTrackingDB // All open databases
 
 	lock     sync.Mutex
 	quitCh   chan struct{}
@@ -39,7 +40,36 @@ type ServiceStack struct {
 
 func (s *ServiceStack) Run() error {
 	if !atomic.CompareAndSwapInt32(&s.state, stateStopped, stateRunning) {
-		return errors.New("already runnnig")
+		return ErrServiceRunning
+	}
+
+	// Start all registered lifecycles.
+	var err error
+	var started []Lifecycle
+	for _, lifecycle := range s.lifecycles {
+		if err = lifecycle.Start(s); err != nil {
+			break
+		}
+		started = append(started, lifecycle)
+	}
+	// Check if any lifecycle failed to start.
+	if err != nil {
+		s.stopServices(started)
+	}
+	return err
+}
+
+func (s *ServiceStack) stopServices(running []Lifecycle) error {
+	// Stop running lifecycles in reverse order.
+	failure := &StopError{Services: make(map[reflect.Type]error)}
+	for i := len(running) - 1; i >= 0; i-- {
+		if err := running[i].Stop(s); err != nil {
+			failure.Services[reflect.TypeOf(running[i])] = err
+		}
+	}
+
+	if len(failure.Services) > 0 {
+		return failure
 	}
 	return nil
 }
@@ -93,6 +123,13 @@ func (s *ServiceStack) RegisterHandler(handler []http.Handler) {
 
 func (s *ServiceStack) OpenDatabase(name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error) {
 	return nil, nil
+}
+
+func (s *ServiceStack) Database(name string) (ethdb.Database, error) {
+	if db, exist := s.databases[name]; exist {
+		return db, nil
+	}
+	return nil, ErrNoDatabase
 }
 
 func NewServiceStack(cfg *Config) (*ServiceStack, error) {
