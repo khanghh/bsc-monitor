@@ -7,10 +7,8 @@
 package leth
 
 import (
-	"encoding/json"
 	"errors"
 	"math"
-	"os"
 	"time"
 
 	godebug "runtime/debug"
@@ -43,10 +41,9 @@ var DefaultConfig = Config{
 }
 
 type Config struct {
-	RPCUrl      string
-	GenesisFile string
-	Genesis     *core.Genesis `toml:"-"`
-	DataDir     string        `toml:",ommitempty"`
+	RPCUrl  string
+	Genesis *core.Genesis `toml:"-"`
+	DataDir string        `toml:",ommitempty"`
 
 	TxPool      core.TxPoolConfig
 	CacheMemory int `toml:",omitempty"` // Megabytes of memory allocated to internal caching
@@ -76,31 +73,9 @@ type Config struct {
 	RPCEVMTimeout time.Duration `toml:",ommitempty"`
 }
 
-// loadGenesis will load the given JSON format genesis file
-func loadGenesis(genesisPath string) (*core.Genesis, error) {
-	file, err := os.Open(genesisPath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	genesis := new(core.Genesis)
-	if err := json.NewDecoder(file).Decode(genesis); err != nil {
-		return nil, err
-	}
-	return genesis, nil
-}
-
 func (config *Config) Sanitize() (*Config, error) {
 	if len(config.RPCUrl) == 0 {
 		return nil, errors.New("rpc url must be provided")
-	}
-	if len(config.GenesisFile) == 0 {
-		return nil, errors.New("genesis file must be provided")
-	}
-	var err error
-	if config.Genesis, err = loadGenesis(config.GenesisFile); err != nil {
-		return nil, err
 	}
 	// Cap the totalCache allowance and tune the garbage collector
 	totalCache := config.CacheMemory
