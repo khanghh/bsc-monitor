@@ -116,7 +116,7 @@ the trie clean cache with default directory will be deleted.
 geth offline prune-block for block data in ancientdb.
 The amount of blocks expected for remaining after prune can be specified via block-amount-reserved in this command,
 will prune and only remain the specified amount of old block data in ancientdb.
-the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb 
+the brief workflow is to backup the the number of this specified amount blocks backward in original ancientdb
 into new ancient_backup, then delete the original ancientdb dir and rename the ancient_backup to original one for replacement,
 finally assemble the statedb and new ancientDb together.
 The purpose of doing it is because the block data will be moved into the ancient store when it
@@ -154,7 +154,7 @@ In other words, this command does the snapshot to trie conversion.
 				},
 				Description: `
 will prune all historical trie state data except genesis block.
-All trie nodes will be deleted from the database. 
+All trie nodes will be deleted from the database.
 
 It expects the genesis file as argument.
 
@@ -198,7 +198,7 @@ geth snapshot traverse-rawstate <state-root>
 will traverse the whole state from the given root and will abort if any referenced
 trie node or contract code is missing. This command can be used for state integrity
 verification. The default checking target is the HEAD state. It's basically identical
-to traverse-state, but the check granularity is smaller. 
+to traverse-state, but the check granularity is smaller.
 
 It's also usable without snapshot enabled.
 `,
@@ -207,7 +207,7 @@ It's also usable without snapshot enabled.
 				Name:      "traverse-rawstate-parallel",
 				Usage:     "Quickly traverse and verify state integrity from a given root hash using parallel processing",
 				ArgsUsage: "<root>",
-				Action:    utils.MigrateFlags(traverseRawStateConcurent),
+				Action:    utils.MigrateFlags(traverseRawStateParallel),
 				Category:  "MISCELLANEOUS COMMANDS",
 				Flags: []cli.Flag{
 					utils.DataDirFlag,
@@ -216,9 +216,9 @@ It's also usable without snapshot enabled.
 				},
 				Description: `
 geth snapshot traverse-rawstate-parallel <state-root>
-will quickly traverse the whole state from the given root and will abort if any referenced 
-trie node or contract code is missing. This command can be used for state integrity 
-verification. The default checking target is the HEAD state. It is designed for fast state 
+will quickly traverse the whole state from the given root and will abort if any referenced
+trie node or contract code is missing. This command can be used for state integrity
+verification. The default checking target is the HEAD state. It is designed for fast state
 traversal by utilizing multiple goroutines and smaller check granularity.
 
 It's also usable without snapshot enabled.
@@ -241,7 +241,7 @@ It's also usable without snapshot enabled.
 				},
 				Description: `
 This command is semantically equivalent to 'geth dump', but uses the snapshots
-as the backend data source, making this command a lot faster. 
+as the backend data source, making this command a lot faster.
 
 The argument is interpreted as block number or hash. If none is provided, the latest
 block is used.
@@ -761,7 +761,7 @@ func traverseRawState(ctx *cli.Context) error {
 	return nil
 }
 
-func traverseRawStateConcurent(ctx *cli.Context) error {
+func traverseRawStateParallel(ctx *cli.Context) error {
 	stack := newNode(ctx, loadConfig(ctx))
 	defer stack.Close()
 
@@ -825,8 +825,8 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 		codes        uint64
 		start        = time.Now()
 		tasks        = make(chan task, 1000)
-		stateWG      sync.WaitGroup
-		storageWG    sync.WaitGroup
+		processWG    sync.WaitGroup
+		doneCh       = make(chan error)
 	)
 
 	// iterater over all trie nodes and produce tasks
@@ -845,7 +845,8 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 		return it.Error()
 	}
 
-	processNode := func(n *node, isStorage bool) (err error) {
+	processNode := func(wg *sync.WaitGroup, n *node, isStorage bool) (err error) {
+		defer wg.Done()
 		if n.hash != (common.Hash{}) {
 			if !rawdb.HasTrieNode(chaindb, n.hash) {
 				log.Error("Missing trie node", "hash", n, "isStorage", isStorage)
@@ -884,12 +885,12 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 					log.Error("Failed to open storage trie", "root", acc.Root, "err", err)
 					return errors.New("missing storage trie")
 				}
-				storageWG.Add(1)
+				wg.Add(1)
 				go func() {
-					defer storageWG.Done()
+					defer wg.Done()
 					if err := iterateTrieNode(storageTrie.NodeIterator(nil), true); err != nil {
 						log.Error("Failed to traverse storage trie", "root", acc.Root, "err", err)
-						utils.Fatalf("error", err)
+						doneCh <- err
 					}
 				}()
 			}
@@ -897,40 +898,49 @@ func traverseRawStateConcurent(ctx *cli.Context) error {
 		return nil
 	}
 
-	// start all workers to consume tasks
+	// start consume tasks
 	for i := 0; i < numWorkers; i++ {
-		stateWG.Add(1)
 		go func() {
-			defer stateWG.Done()
 			for t := range tasks {
-				if err := processNode(t.node, t.isStorage); err != nil {
+				processWG.Add(1)
+				if err := processNode(&processWG, t.node, t.isStorage); err != nil {
 					log.Error("Error processing node", "err", err)
-					utils.Fatalf("error", err)
+					doneCh <- err
 				}
 			}
 		}()
 	}
 
+	// start produce tasks
 	go func() {
-		ticker := time.NewTicker(8 * time.Second)
-		for range ticker.C {
+		if err := iterateTrieNode(t.NodeIterator(nil), false); err != nil {
+			log.Error("Failed to traverse state trie", "root", root, "err", err)
+			doneCh <- err
+			return
+		}
+		processWG.Wait()
+		close(tasks)
+		doneCh <- nil
+	}()
+
+	ticker := time.NewTicker(8 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
 			log.Info("Traversing state", "stateNodes", stateNodes, "storageNodes", storageNodes, "accounts", accounts, "slots", slots, "codes", codes,
 				"stateSize", common.StorageSize(stateSize), "storageSize", common.StorageSize(storageSize), "codeSize", common.StorageSize(codeSize), "totalSize", common.StorageSize(stateSize+storageSize+codeSize),
 				"elapsed", common.PrettyDuration(time.Since(start)))
+		case err := <-doneCh:
+			if err != nil {
+				log.Error("State traversing finished with error")
+				return err
+			}
+			log.Info("State traversing is complete", "stateNodes", stateNodes, "storageNodes", storageNodes, "accounts", accounts, "slots", slots, "codes", codes,
+				"stateSize", common.StorageSize(stateSize), "storageSize", common.StorageSize(storageSize), "codeSize", common.StorageSize(codeSize), "totalSize", common.StorageSize(stateSize+storageSize+codeSize),
+				"elapsed", common.PrettyDuration(time.Since(start)))
+			return nil
 		}
-	}()
-	if err := iterateTrieNode(t.NodeIterator(nil), false); err != nil {
-		log.Error("Failed to traverse state trie", "root", root, "err", err)
-		return err
 	}
-	close(tasks)
-	// wait for all tasks to finished
-	stateWG.Wait()
-	storageWG.Wait()
-	log.Info("State is complete", "stateNodes", stateNodes, "storageNodes", storageNodes, "accounts", accounts, "slots", slots, "codes", codes,
-		"stateSize", common.StorageSize(stateSize), "storageSize", common.StorageSize(storageSize), "codeSize", common.StorageSize(codeSize), "totalSize", common.StorageSize(stateSize+storageSize+codeSize),
-		"elapsed", common.PrettyDuration(time.Since(start)))
-	return nil
 }
 
 func parseRoot(input string) (common.Hash, error) {
