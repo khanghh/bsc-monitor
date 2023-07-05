@@ -8,13 +8,11 @@ package leth
 
 import (
 	"errors"
-	"math"
 	"time"
-
-	godebug "runtime/debug"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	gopsutil "github.com/shirou/gopsutil/mem"
 )
@@ -25,7 +23,7 @@ var DefaultConfig = Config{
 	DatabaseCache:    512,
 	PruneAncientData: false,
 
-	CacheMemory:             4096,
+	TotalCache:              4096,
 	TrieCleanCache:          154,
 	TrieCleanCacheJournal:   "triecache",
 	TrieCleanCacheRejournal: 60 * time.Minute,
@@ -38,15 +36,23 @@ var DefaultConfig = Config{
 
 	RPCGasCap:     50000000,
 	RPCEVMTimeout: 5 * time.Second,
+	EVMConfig:     vm.Config{},
 }
+
+// Percentage of cache memory distributed among modules
+var (
+	DatabaseCachePercent  = 40
+	TrieCleanCachePercent = 15
+	TrieDirtyCachePercent = 25
+	SnapshotCachePercent  = 20
+)
 
 type Config struct {
 	RPCUrl  string
 	Genesis *core.Genesis `toml:"-"`
-	DataDir string        `toml:",ommitempty"`
 
-	TxPool      core.TxPoolConfig
-	CacheMemory int `toml:",omitempty"` // Megabytes of memory allocated to internal caching
+	TxPool     core.TxPoolConfig
+	TotalCache int `toml:",omitempty"` // Total memory in MB to distribute among DB cache and trie cache, snapshot cache
 
 	// Database options
 	SkipBcVersionCheck bool   `toml:"-"`
@@ -71,14 +77,15 @@ type Config struct {
 	// EVM options
 	RPCGasCap     uint64        `toml:",ommitempty"`
 	RPCEVMTimeout time.Duration `toml:",ommitempty"`
+	EVMConfig     vm.Config     `toml:"-"`
 }
 
-func (config *Config) Sanitize() (*Config, error) {
+func (config *Config) Sanitize() error {
 	if len(config.RPCUrl) == 0 {
-		return nil, errors.New("rpc url must be provided")
+		return errors.New("rpc url must be provided")
 	}
 	// Cap the totalCache allowance and tune the garbage collector
-	totalCache := config.CacheMemory
+	totalCache := config.TotalCache
 	mem, err := gopsutil.VirtualMemory()
 	if err == nil {
 		if 32<<(^uintptr(0)>>63) == 32 && mem.Total > 2*1024*1024*1024 {
@@ -92,16 +99,19 @@ func (config *Config) Sanitize() (*Config, error) {
 		}
 	}
 
-	// Ensure Go's GC ignores the database cache for trigger percentage
-	gogc := math.Max(20, math.Min(100, 100/(float64(totalCache)/1024)))
-	log.Debug("Sanitizing Go's GC trigger", "percent", int(gogc))
-	godebug.SetGCPercent(int(gogc))
-
 	if totalCache > 0 {
-		config.DatabaseCache = 40 * config.CacheMemory / 100
-		config.TrieCleanCache = 15 * config.CacheMemory / 100
-		config.TrieDirtyCache = 25 * config.CacheMemory / 100
-		config.SnapshotCache = config.CacheMemory - config.DatabaseCache - config.TrieCleanCache - config.TrieDirtyCache
+		if config.DatabaseCache != 0 || config.TrieCleanCache != 0 ||
+			config.TrieDirtyCache != 0 || config.SnapshotCache != 0 {
+			log.Warn("The total cache memory is already set. Distributing cache memory for each modules",
+				"DatabaseCache", DatabaseCachePercent,
+				"TrieCleanCache", TrieCleanCachePercent,
+				"TrieDirtyCache", TrieDirtyCachePercent,
+				"SnapshotCache", SnapshotCachePercent)
+		}
+		config.DatabaseCache = DatabaseCachePercent * config.TotalCache / 100
+		config.TrieCleanCache = TrieCleanCachePercent * config.TotalCache / 100
+		config.TrieDirtyCache = TrieDirtyCachePercent * config.TotalCache / 100
+		config.SnapshotCache = config.TotalCache - config.DatabaseCache - config.TrieCleanCache - config.TrieDirtyCache
 	}
 
 	// sanitize database options
@@ -146,5 +156,5 @@ func (config *Config) Sanitize() (*Config, error) {
 		config.TriesVerifyMode = DefaultConfig.TriesVerifyMode
 	}
 
-	return config, nil
+	return nil
 }
