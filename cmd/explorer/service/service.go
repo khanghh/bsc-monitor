@@ -17,17 +17,21 @@ import (
 )
 
 const (
-	stateStopped = iota
+	stateInitializing = iota
 	stateRunning
 	stateStopping
+	stateStopped
 )
 
+// ServiceStack manages and operates service lifecycles in a sequential manner, ensuring proper shutdown of services dependencies.
+// It follows a FILO (First In Last Out) approach, the initial registered service starts first but stops last during termination.
+// This ensures that dependent services are available as long as needed.
 type ServiceStack struct {
 	config     *Config
 	rpcAPIs    []rpc.API                   // List of APIs currently provided by the node
 	lifecycles []Lifecycle                 // All registered backends, services, and auxiliary services that have a lifecycle
 	state      int32                       // Tracks the current state of the service
-	databases  map[string]*closeTrackingDB // All open databases
+	databases  map[string]*closeTrackingDB // Map associating namespaces with their respective opened databases
 	dirLock    fileutil.Releaser           // prevents concurrent use of instance directory
 
 	log    log.Logger    // Logger used by service stack
@@ -68,7 +72,7 @@ func (s *ServiceStack) stopServices(running []Lifecycle) error {
 	// Stop running lifecycles in reverse order.
 	failure := &StopError{Services: make(map[reflect.Type]error)}
 	for i := len(running) - 1; i >= 0; i-- {
-		if err := running[i].Stop(s); err != nil {
+		if err := running[i].Stop(); err != nil {
 			failure.Services[reflect.TypeOf(running[i])] = err
 		}
 	}
@@ -109,7 +113,7 @@ func (s *ServiceStack) doStop(running []Lifecycle) error {
 
 // Run starts all registered lifecycles, RPC services and  HTTP handlers
 func (s *ServiceStack) Run() error {
-	if atomic.LoadInt32(&s.state) != stateStopped {
+	if atomic.LoadInt32(&s.state) == stateInitializing {
 		return ErrServiceRunning
 	}
 
@@ -124,7 +128,7 @@ func (s *ServiceStack) Run() error {
 	var err error
 	var started []Lifecycle
 	for _, lifecycle := range s.lifecycles {
-		if err = lifecycle.Start(s); err != nil {
+		if err = lifecycle.Start(); err != nil {
 			break
 		}
 		started = append(started, lifecycle)
@@ -200,11 +204,23 @@ func (s *ServiceStack) Database(name string) (ethdb.Database, error) {
 	return nil, ErrNoDatabase
 }
 
+func (s *ServiceStack) ResolvePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	if s.config.DataDir == "" {
+		return ""
+	}
+	return filepath.Join(s.config.DataDir, path)
+}
+
 func NewServiceStack(config *Config) (*ServiceStack, error) {
-	instance := &ServiceStack{
+	if err := config.Sanitize(); err != nil {
+		return nil, err
+	}
+	return &ServiceStack{
 		config:    config,
 		databases: make(map[string]*closeTrackingDB),
 		stopCh:    make(chan struct{}),
-	}
-	return instance, nil
+	}, nil
 }
