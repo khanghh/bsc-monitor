@@ -5,16 +5,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
 	"syscall"
 
-	"github.com/ethereum/go-ethereum/cmd/explorer/leth"
 	"github.com/ethereum/go-ethereum/cmd/explorer/service"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -23,8 +20,7 @@ var (
 	gitCommit = ""
 	gitDate   = ""
 	// The app that holds all commands and flags.
-	app          *cli.App
-	whenShutdown sync.Once
+	app *cli.App
 )
 
 func init() {
@@ -37,7 +33,6 @@ func init() {
 		rpcUrlFlag,
 		genesisFlag,
 		utils.DataDirFlag,
-		utils.CacheFlag,
 	}
 	app.Flags = append(app.Flags, debug.Flags...)
 
@@ -50,32 +45,6 @@ func init() {
 		prompt.Stdin.Close() // Resets terminal mode.
 		return nil
 	}
-}
-
-// makeAppConfig reads the provide TOML configuration file, if config file is
-// not sepcified default config is used.
-//
-// Returns a sanitized appConfig instance to be used by the application.
-func makeAppConfig(ctx *cli.Context) *appConfig {
-	configFile := ctx.String(configFileFlag.Name)
-	config := appConfig{
-		LEth:    leth.DefaultConfig,
-		Service: service.DefaultConfig,
-		Metrics: metrics.DefaultConfig,
-	}
-	if configFile != "" {
-		if err := loadTOMLConfig(configFile, &config); err != nil {
-			utils.Fatalf("Could not load config file %s: %v", configFile, err)
-		}
-	}
-	config.LEth.Genesis = makeGenesis(ctx)
-
-	dataDir := ctx.String(utils.DataDirFlag.Name)
-	if dataDir != "" {
-		config.Service.DataDir = dataDir
-	}
-
-	return &config
 }
 
 // runServiceStack initialize http/ws rpcservice and start all lifecycle registered in the stack
@@ -109,6 +78,7 @@ func runServiceStack(stack *service.ServiceStack) error {
 
 func run(ctx *cli.Context) error {
 	config := makeAppConfig(ctx)
+	applyMetricConfig(ctx, &config.Metrics)
 
 	stack, err := service.NewServiceStack(&config.Service)
 	if err != nil {
