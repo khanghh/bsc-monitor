@@ -37,6 +37,7 @@ func init() {
 		rpcUrlFlag,
 		genesisFlag,
 		utils.DataDirFlag,
+		utils.CacheFlag,
 	}
 	app.Flags = append(app.Flags, debug.Flags...)
 
@@ -68,12 +69,6 @@ func makeAppConfig(ctx *cli.Context) *appConfig {
 		}
 	}
 	config.LEth.Genesis = makeGenesis(ctx)
-
-	// override config with cli flags
-	rpcUrl := ctx.String(rpcUrlFlag.Name)
-	if rpcUrl != "" {
-		config.LEth.RPCUrl = rpcUrl
-	}
 
 	dataDir := ctx.String(utils.DataDirFlag.Name)
 	if dataDir != "" {
@@ -115,17 +110,16 @@ func runServiceStack(stack *service.ServiceStack) error {
 func run(ctx *cli.Context) error {
 	config := makeAppConfig(ctx)
 
-	leth, err := leth.NewLightEthereum(&config.LEth)
-	if err != nil {
-		return err
-	}
-
 	stack, err := service.NewServiceStack(&config.Service)
 	if err != nil {
 		return err
 	}
 
-	stack.RegisterLifeCycle(leth)
+	_, err = registerLightEthereum(stack, &config.LEth)
+	if err != nil {
+		return err
+	}
+
 	return runServiceStack(stack)
 }
 
