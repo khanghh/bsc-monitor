@@ -7,91 +7,30 @@
 package leth
 
 import (
-	"fmt"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/cmd/explorer/service"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const (
-	chainDataDir     = "chaindata"
-	chaindbNamespace = "leth/db/block/"
-)
-
-var (
-	defaultVmConfig = vm.Config{
-		EnablePreimageRecording: false,
-	}
-)
-
-// LightEthereum implements Ethereum blockchain service without p2p network
-// usingprovided genesis and RPC url
+// LightEthereum is a lightweight Ethereum backend that runs with an RPC url.
+// It does not implement the P2P protocol and prunes the chain state during block importing.
 type LightEthereum struct {
-	config          *Config
-	databases       map[*closeTrackingDB]struct{} // All open databases
-	chainDb         ethdb.Database
-	blockchain      *core.BlockChain
-	txpool          *core.TxPool
-	engine          consensus.Engine
-	hanlder         *handler
-	APIBackend      ethapi.Backend
-	lock            sync.Mutex
-	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
-}
-
-func (leth *LightEthereum) Start(ctx service.Context) error {
-	leth.shutdownTracker.Start()
-	ctx.RegisterAPIs(leth.APIs())
-	return leth.hanlder.Start()
-}
-
-func (leth *LightEthereum) Stop(ctx service.Context) error {
-	if err := leth.hanlder.Stop(); err != nil {
-		return err
-	}
-	leth.blockchain.Stop()
-	leth.txpool.Stop()
-	leth.engine.Close()
-
-	// Clean shutdown marker as the last thing before closing db
-	leth.shutdownTracker.Stop()
-
-	errs := leth.closeDatabases()
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
-}
-
-func (leth *LightEthereum) checkBlockChainVersion(chainDb ethdb.Database) error {
-	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
-	var dbVer = "<nil>"
-	if bcVersion != nil {
-		dbVer = fmt.Sprintf("%d", *bcVersion)
-	}
-
-	if bcVersion != nil && *bcVersion > core.BlockChainVersion {
-		return fmt.Errorf("database version is v%d, Geth %s only supports v%d", *bcVersion, params.VersionWithMeta, core.BlockChainVersion)
-	} else if bcVersion == nil || *bcVersion < core.BlockChainVersion {
-		if bcVersion != nil { // only print warning on upgrade, not on init
-			log.Warn("Upgrade blockchain database version", "from", dbVer, "to", core.BlockChainVersion)
-		} else {
-			log.Info("Initialize blockchain database version", "dbVer", core.BlockChainVersion)
-		}
-		rawdb.WriteDatabaseVersion(chainDb, core.BlockChainVersion)
-	}
-	return nil
+	config     *Config
+	chainDb    ethdb.Database
+	apiBackend ethapi.Backend
+	blockchain *core.BlockChain
+	txpool     *core.TxPool
+	engine     consensus.Engine
+	hanlder    *handler
+	lock       sync.Mutex
 }
 
 func (s *LightEthereum) BlockChain() *core.BlockChain { return s.blockchain }
@@ -108,25 +47,25 @@ func (leth *LightEthereum) APIs() []rpc.API {
 		{
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicEthereumAPI(leth.APIBackend),
+			Service:   ethapi.NewPublicEthereumAPI(leth.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicBlockChainAPI(leth.APIBackend),
+			Service:   ethapi.NewPublicBlockChainAPI(leth.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicDebugAPI(leth.APIBackend),
+			Service:   ethapi.NewPublicDebugAPI(leth.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPrivateDebugAPI(leth.APIBackend),
+			Service:   ethapi.NewPrivateDebugAPI(leth.apiBackend),
 		},
 		{
 			Namespace: "admin",
@@ -135,52 +74,40 @@ func (leth *LightEthereum) APIs() []rpc.API {
 	}...)
 }
 
-func NewLightEthereum(config *Config) (*LightEthereum, error) {
+func (leth *LightEthereum) Start() error {
+	return nil
+}
+
+func (leth *LightEthereum) Stop() error {
+	if err := leth.hanlder.Stop(); err != nil {
+		return err
+	}
+	leth.blockchain.Stop()
+	leth.txpool.Stop()
+	leth.engine.Close()
+	return nil
+}
+
+func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error) {
 	// Ensure configuration values are valid
-	config, err := config.Sanitize()
-	if err != nil {
+	if err := config.Sanitize(); err != nil {
 		return nil, err
 	}
 
-	leth := LightEthereum{
-		config:    config,
-		databases: make(map[*closeTrackingDB]struct{}),
-	}
-
-	chainDb, err := leth.OpenDatabaseWithFreezer(chainDataDir, config.DatabaseCache, config.DatabaseHandles,
-		config.DatabaseFreezer, chaindbNamespace, false, false, false, false, true)
-	if err != nil {
+	if err := checkBlockChainVersion(chainDb); err != nil {
 		return nil, err
 	}
-	leth.chainDb = chainDb
-
-	if err := leth.checkBlockChainVersion(chainDb); err != nil {
-		return nil, err
-	}
-	leth.shutdownTracker = shutdowncheck.NewShutdownTracker(chainDb)
-	leth.shutdownTracker.MarkStartup()
 
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, nil, nil, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
-	// Rewind the chain in case of an incompatible config upgrade.
-	if compat, ok := genesisErr.(*params.ConfigCompatError); ok {
-		log.Warn("Rewinding chain to upgrade configuration", "err", compat)
-		leth.blockchain.SetHead(compat.RewindTo)
-		rawdb.WriteChainConfig(chainDb, genesisHash, chainConfig)
-	}
-	log.Info("Initialised chain configuration", "config", chainConfig)
-	leth.APIBackend = &EthAPIBackend{leth: &leth}
-	leth.engine = parlia.New(chainConfig, chainDb, leth.APIBackend, genesisHash)
-	bcOps := []core.BlockChainOption{
-		core.EnableLightProcessor,
-		core.EnablePipelineCommit,
-	}
+
+	leth = &LightEthereum{}
 	var (
 		cacheConfig = &core.CacheConfig{
 			TrieCleanLimit:     config.TrieCleanCache,
-			TrieCleanJournal:   leth.ResolvePath(config.TrieCleanCacheJournal),
+			TrieCleanJournal:   config.TrieCleanCacheJournal,
 			TrieCleanRejournal: config.TrieCleanCacheRejournal,
 			TrieDirtyLimit:     config.TrieDirtyCache,
 			TrieDirtyDisabled:  config.NoPruning,
@@ -191,11 +118,25 @@ func NewLightEthereum(config *Config) (*LightEthereum, error) {
 			Preimages:          config.Preimages,
 		}
 	)
-	leth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, leth.engine, defaultVmConfig, nil, nil, bcOps...)
+	bcOps := []core.BlockChainOption{
+		core.EnableLightProcessor,
+		core.EnablePipelineCommit,
+	}
+	leth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig, nil, nil, bcOps...)
 	if err != nil {
 		return nil, err
 	}
+	// Rewind the chain in case of an incompatible config upgrade.
+	if compat, ok := genesisErr.(*params.ConfigCompatError); ok {
+		log.Warn("Rewinding chain to upgrade configuration", "err", compat)
+		leth.blockchain.SetHead(compat.RewindTo)
+		rawdb.WriteChainConfig(chainDb, genesisHash, chainConfig)
+	}
+	log.Info("Initialised chain configuration", "config", chainConfig)
+	leth.apiBackend = &EthAPIBackend{leth: leth}
+	leth.engine = parlia.New(chainConfig, chainDb, leth.apiBackend, genesisHash)
+
 	leth.txpool = core.NewTxPool(leth.config.TxPool, chainConfig, leth.blockchain)
 	leth.hanlder = newHandler(NewRpcConnector(leth.config.RPCUrl), leth.blockchain, leth.txpool)
-	return &leth, nil
+	return leth, nil
 }
