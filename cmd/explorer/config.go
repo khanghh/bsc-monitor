@@ -83,65 +83,48 @@ func loadTOMLConfig(file string, cfg interface{}) error {
 	return err
 }
 
-// loadConfig loads geth configuration and creates a blank node instance.
-func loadConfig(ctx *cli.Context) *appConfig {
-	// Load defaults.
-	cfg := &appConfig{
-		LEth:    leth.DefaultConfig,
-		Metrics: metrics.DefaultConfig,
-	}
-
-	// Load config file.
-	if file := ctx.GlobalString(configFileFlag.Name); file != "" {
-		if err := loadTOMLConfig(file, &cfg); err != nil {
-			utils.Fatalf("%v", err)
-		}
-	}
-	return cfg
-}
-
-func applyMetricConfig(ctx *cli.Context, cfg *appConfig) {
+func applyMetricConfig(ctx *cli.Context, cfg *metrics.Config) {
 	if ctx.GlobalIsSet(utils.MetricsEnabledFlag.Name) {
-		cfg.Metrics.Enabled = ctx.GlobalBool(utils.MetricsEnabledFlag.Name)
+		cfg.Enabled = ctx.GlobalBool(utils.MetricsEnabledFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsEnabledExpensiveFlag.Name) {
-		cfg.Metrics.EnabledExpensive = ctx.GlobalBool(utils.MetricsEnabledExpensiveFlag.Name)
+		cfg.EnabledExpensive = ctx.GlobalBool(utils.MetricsEnabledExpensiveFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsHTTPFlag.Name) {
-		cfg.Metrics.HTTP = ctx.GlobalString(utils.MetricsHTTPFlag.Name)
+		cfg.HTTP = ctx.GlobalString(utils.MetricsHTTPFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsPortFlag.Name) {
-		cfg.Metrics.Port = ctx.GlobalInt(utils.MetricsPortFlag.Name)
+		cfg.Port = ctx.GlobalInt(utils.MetricsPortFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsEnableInfluxDBFlag.Name) {
-		cfg.Metrics.EnableInfluxDB = ctx.GlobalBool(utils.MetricsEnableInfluxDBFlag.Name)
+		cfg.EnableInfluxDB = ctx.GlobalBool(utils.MetricsEnableInfluxDBFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBEndpointFlag.Name) {
-		cfg.Metrics.InfluxDBEndpoint = ctx.GlobalString(utils.MetricsInfluxDBEndpointFlag.Name)
+		cfg.InfluxDBEndpoint = ctx.GlobalString(utils.MetricsInfluxDBEndpointFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBDatabaseFlag.Name) {
-		cfg.Metrics.InfluxDBDatabase = ctx.GlobalString(utils.MetricsInfluxDBDatabaseFlag.Name)
+		cfg.InfluxDBDatabase = ctx.GlobalString(utils.MetricsInfluxDBDatabaseFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBUsernameFlag.Name) {
-		cfg.Metrics.InfluxDBUsername = ctx.GlobalString(utils.MetricsInfluxDBUsernameFlag.Name)
+		cfg.InfluxDBUsername = ctx.GlobalString(utils.MetricsInfluxDBUsernameFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBPasswordFlag.Name) {
-		cfg.Metrics.InfluxDBPassword = ctx.GlobalString(utils.MetricsInfluxDBPasswordFlag.Name)
+		cfg.InfluxDBPassword = ctx.GlobalString(utils.MetricsInfluxDBPasswordFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBTagsFlag.Name) {
-		cfg.Metrics.InfluxDBTags = ctx.GlobalString(utils.MetricsInfluxDBTagsFlag.Name)
+		cfg.InfluxDBTags = ctx.GlobalString(utils.MetricsInfluxDBTagsFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsEnableInfluxDBV2Flag.Name) {
-		cfg.Metrics.EnableInfluxDBV2 = ctx.GlobalBool(utils.MetricsEnableInfluxDBV2Flag.Name)
+		cfg.EnableInfluxDBV2 = ctx.GlobalBool(utils.MetricsEnableInfluxDBV2Flag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBTokenFlag.Name) {
-		cfg.Metrics.InfluxDBToken = ctx.GlobalString(utils.MetricsInfluxDBTokenFlag.Name)
+		cfg.InfluxDBToken = ctx.GlobalString(utils.MetricsInfluxDBTokenFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBBucketFlag.Name) {
-		cfg.Metrics.InfluxDBBucket = ctx.GlobalString(utils.MetricsInfluxDBBucketFlag.Name)
+		cfg.InfluxDBBucket = ctx.GlobalString(utils.MetricsInfluxDBBucketFlag.Name)
 	}
 	if ctx.GlobalIsSet(utils.MetricsInfluxDBOrganizationFlag.Name) {
-		cfg.Metrics.InfluxDBOrganization = ctx.GlobalString(utils.MetricsInfluxDBOrganizationFlag.Name)
+		cfg.InfluxDBOrganization = ctx.GlobalString(utils.MetricsInfluxDBOrganizationFlag.Name)
 	}
 }
 
@@ -154,4 +137,32 @@ func deprecated(field string) bool {
 	default:
 		return false
 	}
+}
+
+// makeAppConfig reads the provide TOML configuration file, if config file is
+// not sepcified default config is used.
+//
+// Returns a sanitized appConfig instance to be used by the application.
+func makeAppConfig(ctx *cli.Context) *appConfig {
+	config := &appConfig{
+		LEth:    leth.DefaultConfig,
+		Service: service.DefaultConfig,
+		Metrics: metrics.DefaultConfig,
+	}
+	if err := loadTOMLConfig(ctx.String(configFileFlag.Name), &config); err != nil {
+		utils.Fatalf("Could not load toml config file: %v", err)
+	}
+
+	// override config with flag values
+	config.LEth.Genesis = makeGenesis(ctx)
+	dataDir := ctx.String(utils.DataDirFlag.Name)
+	if dataDir != "" {
+		config.Service.DataDir = dataDir
+	}
+	rpcUrl := ctx.String(rpcUrlFlag.Name)
+	if rpcUrl != "" {
+		config.LEth.RPCUrl = rpcUrl
+	}
+
+	return config
 }
