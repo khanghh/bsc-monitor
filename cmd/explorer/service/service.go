@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -35,7 +36,7 @@ type ServiceStack struct {
 	dirLock    fileutil.Releaser           // prevents concurrent use of instance directory
 
 	log    log.Logger    // Logger used by service stack
-	lock   sync.Mutex    // Lockere for registration of lifecycles, RPC apis, HTTP handlers
+	lock   sync.Mutex    // Locker for registration of lifecycles, RPC apis, HTTP handlers
 	stopCh chan struct{} // Channel to signal service stack termination
 }
 
@@ -113,7 +114,7 @@ func (s *ServiceStack) doStop(running []Lifecycle) error {
 
 // Run starts all registered lifecycles, RPC services and  HTTP handlers
 func (s *ServiceStack) Run() error {
-	if atomic.LoadInt32(&s.state) == stateInitializing {
+	if atomic.LoadInt32(&s.state) != stateInitializing {
 		return ErrServiceRunning
 	}
 
@@ -164,7 +165,7 @@ func (s *ServiceStack) RegisterLifeCycle(lifecycle Lifecycle) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.state != stateStopped {
+	if s.state != stateInitializing {
 		panic("can't register lifecycle when service is running")
 	}
 	if containsLifecycle(s.lifecycles, lifecycle) {
@@ -178,7 +179,7 @@ func (s *ServiceStack) RegisterAPIs(apis []rpc.API) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if s.state != stateRunning {
+	if s.state != stateInitializing {
 		panic("can't register APIs on running/stopped node")
 	}
 	s.rpcAPIs = append(s.rpcAPIs, apis...)
@@ -188,12 +189,34 @@ func (s *ServiceStack) RegisterAPIs(apis []rpc.API) {
 func (s *ServiceStack) RegisterHandler(name, path string, handler http.Handler) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+
+	if s.state != stateInitializing {
+		panic("can't register HTTP handler on running/stopped node")
+	}
+	// TODO(khanghh): add http server and register HTTP handles
 }
 
 // OpenDatabase opens an existing database with the given name (or creates one if no
 // previous can be found) from within the node's instance directory.
 func (s *ServiceStack) OpenDatabase(name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error) {
-	return nil, nil
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.state == stateStopped {
+		return nil, ErrServiceStopped
+	}
+
+	var db ethdb.Database
+	var err error
+	if s.config.DataDir == "" {
+		db = rawdb.NewMemoryDatabase()
+	} else {
+		db, err = rawdb.NewLevelDBDatabase(s.ResolvePath(name), cache, handles, namespace, readonly)
+	}
+
+	if err == nil {
+		db = s.wrapDatabase(namespace, db)
+	}
+	return db, err
 }
 
 // Database is getter for openned database by namespace
