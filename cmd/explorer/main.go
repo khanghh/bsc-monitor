@@ -50,7 +50,7 @@ func init() {
 // runServiceStack initialize http/ws rpcservice and start all lifecycle registered in the stack
 func runServiceStack(stack *service.ServiceStack) error {
 	if err := stack.Run(); err != nil {
-		utils.Fatalf("Error starting protocol stack: %v", err)
+		utils.Fatalf("Error starting service stack: %v", err)
 	}
 	go func() {
 		sigCh := make(chan os.Signal, 1)
