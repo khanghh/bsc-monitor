@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
@@ -18,18 +19,13 @@ import (
 )
 
 var DefaultConfig = Config{
+	RPCUrl: "http://localhost:8545",
 	TxPool: core.DefaultTxPoolConfig,
 
-	DatabaseCache:    512,
-	PruneAncientData: false,
-
 	TotalCache:              4096,
-	TrieCleanCache:          154,
 	TrieCleanCacheJournal:   "triecache",
 	TrieCleanCacheRejournal: 60 * time.Minute,
-	TrieDirtyCache:          256,
 	TrieTimeout:             5 * time.Minute,
-	SnapshotCache:           102,
 	TriesInMemory:           128,
 	TriesVerifyMode:         core.LocalVerify,
 	Preimages:               false,
@@ -38,14 +34,6 @@ var DefaultConfig = Config{
 	RPCEVMTimeout: 5 * time.Second,
 	EVMConfig:     vm.Config{},
 }
-
-// Percentage of cache memory distributed among modules
-var (
-	DatabaseCachePercent  = 40
-	TrieCleanCachePercent = 15
-	TrieDirtyCachePercent = 25
-	SnapshotCachePercent  = 20
-)
 
 type Config struct {
 	RPCUrl  string
@@ -59,7 +47,6 @@ type Config struct {
 	DatabaseHandles    int    `toml:"-"`
 	DatabaseCache      int    `toml:",omitempty"`
 	DatabaseFreezer    string `toml:",omitempty"`
-	PruneAncientData   bool   `toml:",omitempty"`
 
 	// trie cache options
 	TrieCleanCache          int           `toml:",omitempty"`
@@ -72,7 +59,7 @@ type Config struct {
 	SnapshotCache   int             `toml:",omitempty"`
 	TriesInMemory   uint64          `toml:",omitempty"`
 	TriesVerifyMode core.VerifyMode `toml:",omitempty"`
-	Preimages       bool            `toml:",omitempty"`
+	Preimages       bool            `toml:"-"`
 
 	// EVM options
 	RPCGasCap     uint64        `toml:",ommitempty"`
@@ -100,17 +87,9 @@ func (config *Config) Sanitize() error {
 	}
 
 	if totalCache > 0 {
-		if config.DatabaseCache != 0 || config.TrieCleanCache != 0 ||
-			config.TrieDirtyCache != 0 || config.SnapshotCache != 0 {
-			log.Warn("The total cache memory is already set. Distributing cache memory for each modules",
-				"DatabaseCache", DatabaseCachePercent,
-				"TrieCleanCache", TrieCleanCachePercent,
-				"TrieDirtyCache", TrieDirtyCachePercent,
-				"SnapshotCache", SnapshotCachePercent)
-		}
-		config.DatabaseCache = DatabaseCachePercent * config.TotalCache / 100
-		config.TrieCleanCache = TrieCleanCachePercent * config.TotalCache / 100
-		config.TrieDirtyCache = TrieDirtyCachePercent * config.TotalCache / 100
+		config.DatabaseCache = 40 * config.TotalCache / 100
+		config.TrieCleanCache = 15 * config.TotalCache / 100
+		config.TrieDirtyCache = 25 * config.TotalCache / 100
 		config.SnapshotCache = config.TotalCache - config.DatabaseCache - config.TrieCleanCache - config.TrieDirtyCache
 	}
 
@@ -155,6 +134,15 @@ func (config *Config) Sanitize() error {
 	if config.TriesVerifyMode == 0 {
 		config.TriesVerifyMode = DefaultConfig.TriesVerifyMode
 	}
+
+	totalCache = config.DatabaseCache + config.TrieCleanCache + config.TrieDirtyCache + config.SnapshotCache
+	log.Info("Cache memory allocations",
+		"TotalCache", common.StorageSize(totalCache*1024*1024),
+		"DatabaseCache", common.StorageSize(config.DatabaseCache*1024*1024),
+		"TrieCleanCache", common.StorageSize(config.TrieCleanCache*1024*1024),
+		"TrieDirtyCache", common.StorageSize(config.TrieDirtyCache*1024*1024),
+		"SnapshotCache", common.StorageSize(config.SnapshotCache*1024*1024),
+	)
 
 	return nil
 }
