@@ -1,9 +1,3 @@
-//
-// Created on 2022/12/20 by khanghh
-// Project: github.com/verichains/chain-monitor
-// Copyright (c) 2022 Verichains Lab
-//
-
 package leth
 
 import (
