@@ -315,9 +315,9 @@ func (b *EthAPIBackend) Engine() consensus.Engine {
 }
 
 func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base *state.StateDB, checkLive, preferDisk bool) (*state.StateDB, error) {
-	return b.leth.StateAtBlock(block, reexec, base, checkLive, preferDisk)
+	panic("not implement")
 }
 
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (core.Message, vm.BlockContext, *state.StateDB, error) {
-	return b.leth.stateAtTransaction(block, txIndex, reexec)
+	panic("not implement")
 }

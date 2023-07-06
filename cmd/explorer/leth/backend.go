@@ -7,8 +7,6 @@
 package leth
 
 import (
-	"sync"
-
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -31,7 +29,6 @@ type LightEthereum struct {
 	txpool          *core.TxPool
 	engine          consensus.Engine
 	hanlder         *handler
-	lock            sync.Mutex
 	shutdownTracker *shutdowncheck.ShutdownTracker
 }
 
