@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -23,14 +24,15 @@ import (
 // LightEthereum is a lightweight Ethereum backend that runs with an RPC url.
 // It does not implement the P2P protocol and prunes the chain state during block importing.
 type LightEthereum struct {
-	config     *Config
-	chainDb    ethdb.Database
-	apiBackend ethapi.Backend
-	blockchain *core.BlockChain
-	txpool     *core.TxPool
-	engine     consensus.Engine
-	hanlder    *handler
-	lock       sync.Mutex
+	config          *Config
+	chainDb         ethdb.Database
+	apiBackend      ethapi.Backend
+	blockchain      *core.BlockChain
+	txpool          *core.TxPool
+	engine          consensus.Engine
+	hanlder         *handler
+	lock            sync.Mutex
+	shutdownTracker *shutdowncheck.ShutdownTracker
 }
 
 func (s *LightEthereum) BlockChain() *core.BlockChain { return s.blockchain }
@@ -75,6 +77,9 @@ func (leth *LightEthereum) APIs() []rpc.API {
 }
 
 func (leth *LightEthereum) Start() error {
+	leth.shutdownTracker = shutdowncheck.NewShutdownTracker(leth.chainDb)
+	leth.shutdownTracker.MarkStartup()
+	leth.shutdownTracker.Start()
 	return nil
 }
 
@@ -83,8 +88,10 @@ func (leth *LightEthereum) Stop() error {
 		return err
 	}
 	leth.blockchain.Stop()
-	leth.txpool.Stop()
 	leth.engine.Close()
+
+	// Clean shutdown marker as the last thing before closing db
+	leth.shutdownTracker.Stop()
 	return nil
 }
 
@@ -94,16 +101,18 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 		return nil, err
 	}
 
-	if err := checkBlockChainVersion(chainDb); err != nil {
-		return nil, err
-	}
-
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, nil, nil, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
 	}
+	if err := checkBlockChainVersion(chainDb); err != nil {
+		return nil, err
+	}
 
-	leth = &LightEthereum{}
+	leth = &LightEthereum{
+		config:  config,
+		chainDb: chainDb,
+	}
 	var (
 		cacheConfig = &core.CacheConfig{
 			TrieCleanLimit:     config.TrieCleanCache,
@@ -122,6 +131,8 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 		core.EnableLightProcessor,
 		core.EnablePipelineCommit,
 	}
+	leth.apiBackend = &EthAPIBackend{leth}
+	leth.engine = parlia.New(chainConfig, chainDb, leth.apiBackend, genesisHash)
 	leth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig, nil, nil, bcOps...)
 	if err != nil {
 		return nil, err
@@ -133,9 +144,6 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 		rawdb.WriteChainConfig(chainDb, genesisHash, chainConfig)
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig)
-	leth.apiBackend = &EthAPIBackend{leth: leth}
-	leth.engine = parlia.New(chainConfig, chainDb, leth.apiBackend, genesisHash)
-
 	leth.txpool = core.NewTxPool(leth.config.TxPool, chainConfig, leth.blockchain)
 	leth.hanlder = newHandler(NewRpcConnector(leth.config.RPCUrl), leth.blockchain, leth.txpool)
 	return leth, nil
