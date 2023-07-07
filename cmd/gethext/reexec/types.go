@@ -4,11 +4,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-type txContext = TxContext
+type txContext = TxResult
 type callFrame = CallFrame
 
-// TxContext provides execution context for transaction
-type TxContext struct {
+// TxResult provides execution context for transaction
+type TxResult struct {
 	Block       *types.Block       // block in which the transaction was included
 	Transaction *types.Transaction // the transaction in block
 	TxIndex     uint64             // index of the transaction within the block
@@ -28,10 +28,10 @@ type CallCtx struct {
 // ReExecHook provides a way to hook into the re-execution process
 type ReExecHook interface {
 	// OnTxStart is called when transaction execution starts
-	OnTxStart(ctx *TxContext, gasLimit uint64)
+	OnTxStart(ctx *TxResult, gasLimit uint64)
 
 	// OnTxEnd is called when transaction execution ends
-	OnTxEnd(ctx *TxContext, resetGas uint64)
+	OnTxEnd(ctx *TxResult, resetGas uint64)
 
 	// OnCallEnter is called when execution enters a method
 	OnCallEnter(ctx *CallCtx)

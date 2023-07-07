@@ -31,7 +31,7 @@ type ServiceStack struct {
 	config     *Config
 	rpcAPIs    []rpc.API                   // List of APIs currently provided by the node
 	lifecycles []Lifecycle                 // All registered backends, services, and auxiliary services that have a lifecycle
-	state      int32                       // Tracks the current state of the service
+	state      int32                       // Tracks the current state of the service stack
 	databases  map[string]*closeTrackingDB // Map associating namespaces with their respective opened databases
 	dirLock    fileutil.Releaser           // prevents concurrent use of instance directory
 
