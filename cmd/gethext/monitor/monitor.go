@@ -25,18 +25,18 @@ const (
 )
 
 type Processor interface {
-	ProcessBlock(state *state.StateDB, block *types.Block, txResults []*reexec.TxContext) error
+	ProcessBlock(state *state.StateDB, block *types.Block, txResults []*reexec.TxResult) error
 }
 
 type monitorHook struct {
 	block *types.Block
-	txs   []*reexec.TxContext
+	txs   []*reexec.TxResult
 }
 
-func (h *monitorHook) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {}
+func (h *monitorHook) OnTxStart(ret *reexec.TxResult, gasLimit uint64) {}
 
-func (h *monitorHook) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
-	h.txs[int(ctx.TxIndex)] = ctx
+func (h *monitorHook) OnTxEnd(ret *reexec.TxResult, resetGas uint64) {
+	h.txs[int(ret.TxIndex)] = ret
 }
 
 func (h *monitorHook) OnCallEnter(ctx *reexec.CallCtx) {}
@@ -46,7 +46,7 @@ func (h *monitorHook) OnCallExit(ctx *reexec.CallCtx) {}
 func newMonitorHook(block *types.Block) *monitorHook {
 	return &monitorHook{
 		block: block,
-		txs:   make([]*reexec.TxContext, block.Transactions().Len()),
+		txs:   make([]*reexec.TxResult, block.Transactions().Len()),
 	}
 }
 
