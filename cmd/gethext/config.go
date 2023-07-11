@@ -100,9 +100,8 @@ type gethConfig struct {
 	Node     node.Config
 	Ethstats ethstatsConfig
 	Metrics  metrics.Config
-	Monitor  monitor.MonitorConfig
-	Indexer  monitor.IndexerConfig
-	Plugins  plugin.PluginsConfig
+	Monitor  monitor.Config
+	Plugins  plugin.Config
 }
 
 func defaultNodeConfig() node.Config {
@@ -151,8 +150,7 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 		Eth:     ethconfig.Defaults,
 		Node:    defaultNodeConfig(),
 		Metrics: metrics.DefaultConfig,
-		Monitor: monitor.DefaultMonitorConfig,
-		Indexer: monitor.DefaultIndexerConfig,
+		Monitor: monitor.DefaultConfig,
 	}
 
 	// Load config file.
@@ -178,10 +176,6 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 	if ctx.IsSet(monitorEnableFlag.Name) {
 		cfg.Monitor.Enabled = ctx.GlobalBool(monitorEnableFlag.Name)
 	}
-	if ctx.IsSet(indexerEnableFlag.Name) {
-		cfg.Indexer.Enabled = ctx.GlobalBool(indexerEnableFlag.Name)
-	}
-
 	return cfg
 }
 
