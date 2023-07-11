@@ -48,7 +48,7 @@ type loadedPlugin struct {
 }
 
 type PluginManager struct {
-	config  *PluginsConfig
+	config  *Config
 	plugins map[string]loadedPlugin
 	ctx     *sharedCtx
 	mtx     sync.Mutex
@@ -191,7 +191,7 @@ func (m *PluginManager) Stop() error {
 	return nil
 }
 
-func NewPluginManager(config *PluginsConfig, db ethdb.Database, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
+func NewPluginManager(config *Config, db ethdb.Database, node *node.Node, ethBackend EthBackend, monitorBackend MonitorBackend, taskMgr TaskManager) (*PluginManager, error) {
 	pm := &PluginManager{
 		config:  config,
 		plugins: make(map[string]loadedPlugin),
