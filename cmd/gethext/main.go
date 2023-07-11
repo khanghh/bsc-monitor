@@ -337,7 +337,6 @@ func geth(ctx *cli.Context) error {
 		InstanceDir: stack.InstanceDir(),
 		Plugins:     &cfg.Plugins,
 		Monitor:     &cfg.Monitor,
-		Indexer:     &cfg.Indexer,
 	}
 	ethexplorer, err := NewExplorerService(serviceCfg, stack, ethereum)
 	if err != nil {
