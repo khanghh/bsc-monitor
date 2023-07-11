@@ -95,8 +95,8 @@ type EthBackend interface {
 }
 
 type MonitorBackend interface {
-	RegisterProcessor(name string, proc monitor.Processor)
-	UnregisterProcessor(name string)
+	AddProcessor(proc monitor.Processor)
+	RemoveProcessor(proc monitor.Processor)
 }
 
 type TaskManager interface {
