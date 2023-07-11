@@ -13,7 +13,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -24,39 +23,15 @@ const (
 	maxTriesInMemory = 127
 )
 
-type Processor interface {
-	ProcessBlock(state *state.StateDB, block *types.Block, txResults []*reexec.TxResult) error
-}
-
-type monitorHook struct {
-	block *types.Block
-	txs   []*reexec.TxResult
-}
-
-func (h *monitorHook) OnTxStart(ret *reexec.TxResult, gasLimit uint64) {}
-
-func (h *monitorHook) OnTxEnd(ret *reexec.TxResult, resetGas uint64) {
-	h.txs[int(ret.TxIndex)] = ret
-}
-
-func (h *monitorHook) OnCallEnter(ctx *reexec.CallCtx) {}
-
-func (h *monitorHook) OnCallExit(ctx *reexec.CallCtx) {}
-
-func newMonitorHook(block *types.Block) *monitorHook {
-	return &monitorHook{
-		block: block,
-		txs:   make([]*reexec.TxResult, block.Transactions().Len()),
-	}
-}
+type Processor = reexec.TransactionHook
 
 // ChainMonitor calls registered processors to process every pending transactions received in txpool
 type ChainMonitor struct {
-	config     *MonitorConfig
+	config     *Config
 	blockchain *core.BlockChain
 	replayer   *reexec.ChainReplayer
 
-	processors   map[string]Processor
+	processors   map[Processor]bool
 	chainHeadSub event.Subscription
 	chainHeadCh  chan core.ChainHeadEvent
 
@@ -66,12 +41,12 @@ type ChainMonitor struct {
 	quitCh chan struct{}
 }
 
-func (m *ChainMonitor) Processors() map[string]Processor {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	ret := make(map[string]Processor)
-	for procName, proc := range m.processors {
-		ret[procName] = proc
+func (m *ChainMonitor) getProcessors() []Processor {
+	ret := make([]Processor, 0)
+	for proc, enabled := range m.processors {
+		if enabled {
+			ret = append(ret, proc)
+		}
 	}
 	return ret
 }
@@ -82,13 +57,11 @@ func (m *ChainMonitor) processBlock(ctx context.Context, block *types.Block) {
 			log.Error(fmt.Sprintf("ChainMonitor process block panic:\n%#v", err))
 		}
 	}()
-	hook := newMonitorHook(block)
-	statedb, err := m.replayer.ReplayBlock(ctx, block, nil, hook)
+
+	hook := &monitorHook{m.getProcessors()}
+	_, err := m.replayer.ReplayBlock(ctx, block, nil, hook)
 	if err != nil {
 		return
-	}
-	for _, proc := range m.processors {
-		proc.ProcessBlock(statedb, block, hook.txs)
 	}
 }
 
@@ -136,28 +109,30 @@ func (m *ChainMonitor) Stop() error {
 	return nil
 }
 
-func (m *ChainMonitor) RegisterProcessor(name string, proc Processor) {
+func (m *ChainMonitor) AddProcessor(proc Processor) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	m.processors[name] = proc
+	m.processors[proc] = true
 }
 
-func (m *ChainMonitor) UnregisterProcessor(name string) {
+func (m *ChainMonitor) RemoveProcessor(proc Processor) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	delete(m.processors, name)
+	delete(m.processors, proc)
 }
 
-func NewChainMonitor(cfg *MonitorConfig, db ethdb.Database, blockchain *core.BlockChain) (*ChainMonitor, error) {
+func NewChainMonitor(cfg *Config, db ethdb.Database, bc *core.BlockChain) (*ChainMonitor, error) {
 	if err := cfg.Sanitize(); err != nil {
 		return nil, err
 	}
-	replayer := reexec.NewChainReplayer(blockchain.StateCache(), blockchain)
+	// MaxTrieInMemory is set to 128, ensuring the state trie stays in the blockchain's state cache (state.Database).
+	// For monitoring, we only re-execute the lastest block, so we can use the blockchain's state cache directly.
+	replayer := reexec.NewChainReplayer(bc.StateCache(), bc)
 	return &ChainMonitor{
 		config:     cfg,
-		blockchain: blockchain,
+		blockchain: bc,
 		replayer:   replayer,
 		quitCh:     make(chan struct{}),
-		processors: make(map[string]Processor),
+		processors: make(map[Processor]bool),
 	}, nil
 }
