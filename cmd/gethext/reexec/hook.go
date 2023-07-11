@@ -6,51 +6,36 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 )
 
 type CallTracerWithHook struct {
-	handler *callTracer
-	block   *types.Block
-	signer  types.Signer
-	hook    ReExecHook
-
-	// variables to track current transaction execution
-	txIndex  uint64    // index of the current transaction
-	txResult *TxResult // context of the current transaction
-	ctxStack []CallCtx // call stack of the current transaction
+	*Context
+	handler  *callTracer
+	hook     TransactionHook
+	txResult *TxResult // The execution result of the current transaction
 }
 
 func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 	t.handler.CaptureTxStart(gasLimit)
-	tx := t.block.Transactions()[t.txIndex]
-	msg, _ := tx.AsMessage(t.signer, t.block.BaseFee())
-	t.txResult = &TxResult{
-		Block:       t.block,
-		Transaction: tx,
-		TxIndex:     t.txIndex,
-		Message:     &msg,
-	}
-	t.hook.OnTxStart(t.txResult, gasLimit)
+	t.txCallStack = t.handler.callstack
+	t.txResult = &t.results[t.txIndex]
+	t.hook.OnTxStart(t.Context, gasLimit)
 }
 
 func (t *CallTracerWithHook) CaptureTxEnd(restGas uint64) {
 	t.handler.CaptureTxEnd(restGas)
-	t.txResult.CallStack = t.handler.callstack
-	t.hook.OnTxEnd(t.txResult, restGas)
-	t.txResult = nil
-	t.txIndex += 1
+	if int(t.txIndex+1) < t.block.Transactions().Len() {
+		t.txIndex += 1
+	}
+	t.hook.OnTxEnd(t.Context, t.txResult, restGas)
 }
 
 func (t *CallTracerWithHook) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
 	t.handler.CaptureStart(env, from, to, create, input, gas, value)
-	t.ctxStack = make([]CallCtx, 1)
-	t.ctxStack[0] = CallCtx{
-		txContext: t.txResult,
-		callFrame: &t.handler.callstack[0],
-	}
 }
 
 func (t *CallTracerWithHook) CaptureEnd(output []byte, gasUsed uint64, err error) {
@@ -66,25 +51,13 @@ func (t *CallTracerWithHook) CaptureEnter(typ vm.OpCode, from common.Address, to
 		return
 	}
 	frame := t.handler.callstack[len(t.handler.callstack)-1]
-	callCtx := CallCtx{
-		txContext: t.txResult,
-		callFrame: &frame,
-	}
-	size := len(t.ctxStack)
-	if size > 0 {
-		callCtx.Parent = &t.ctxStack[size-1]
-	}
-	t.ctxStack = append(t.ctxStack, callCtx)
-	t.hook.OnCallEnter(&callCtx)
+	t.hook.OnCallEnter(t.Context, &frame)
 }
 
 func (t *CallTracerWithHook) CaptureExit(output []byte, gasUsed uint64, err error) {
+	frame := t.handler.callstack[len(t.handler.callstack)-1]
 	t.handler.CaptureExit(output, gasUsed, err)
-	size := len(t.ctxStack)
-	callCtx := t.ctxStack[size-1]
-	t.ctxStack = t.ctxStack[:size-1]
-	callCtx.Error = err
-	t.hook.OnCallExit(&callCtx)
+	t.hook.OnCallExit(t.Context, &frame)
 }
 
 func (t *CallTracerWithHook) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
@@ -104,14 +77,15 @@ func (t *CallTracerWithHook) Stop(err error) {
 	t.handler.Stop(err)
 }
 
-func NewCallTracerWithHook(block *types.Block, signer types.Signer, hook ReExecHook) tracers.Tracer {
+func NewCallTracerWithHook(block *types.Block, signer types.Signer, state *state.StateDB, hook TransactionHook) tracers.Tracer {
 	return &CallTracerWithHook{
-		block:  block,
-		signer: signer,
-		handler: &callTracer{
-			opts:      &callTracerOptions{},
-			callstack: make([]callFrame, 1),
+		Context: &Context{
+			block:   block,
+			signer:  signer,
+			state:   state,
+			results: make([]TxResult, len(block.Transactions())),
 		},
-		hook: hook,
+		handler: newCallTracer(nil),
+		hook:    hook,
 	}
 }

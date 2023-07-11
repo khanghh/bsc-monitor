@@ -1,41 +1,23 @@
 package reexec
 
-import (
-	"github.com/ethereum/go-ethereum/core/types"
-)
-
-type txContext = TxResult
-type callFrame = CallFrame
-
 // TxResult provides execution context for transaction
 type TxResult struct {
-	Block       *types.Block       // block in which the transaction was included
-	Transaction *types.Transaction // the transaction in block
-	TxIndex     uint64             // index of the transaction within the block
-	Message     *types.Message     // message derived from the transaction
-	Reverted    bool               // the state of transaction successful or reverted
-	CallStack   []CallFrame
+	TxIndex   uint64 // index of the transaction within the block
+	Reverted  bool   // the state of transaction successful or reverted
+	CallStack []CallFrame
 }
 
-// CallCtx provides context information for a function call
-type CallCtx struct {
-	*txContext
-	*callFrame
-	Parent *CallCtx // pointer to the parent method context that executes this call
-	Error  error
-}
-
-// ReExecHook provides a way to hook into the re-execution process
-type ReExecHook interface {
+// TransactionHook provides a way to hook into the transaction execution process
+type TransactionHook interface {
 	// OnTxStart is called when transaction execution starts
-	OnTxStart(ctx *TxResult, gasLimit uint64)
+	OnTxStart(ctx *Context, gasLimit uint64)
+
+	// OnCallEnter is called when execution enters a contract method
+	OnCallEnter(ctx *Context, call *CallFrame)
+
+	// OnCallExit is called when execution exits from a contract method
+	OnCallExit(ctx *Context, call *CallFrame)
 
 	// OnTxEnd is called when transaction execution ends
-	OnTxEnd(ctx *TxResult, resetGas uint64)
-
-	// OnCallEnter is called when execution enters a method
-	OnCallEnter(ctx *CallCtx)
-
-	// OnCallExit is called when execution exits from a method
-	OnCallExit(ctx *CallCtx)
+	OnTxEnd(ctx *Context, ret *TxResult, restGas uint64)
 }

@@ -16,7 +16,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers"
 )
 
 type CallFrame struct {
@@ -46,10 +45,10 @@ type callTracerOptions struct {
 
 // newCallTracer returns a native go tracer which tracks
 // call frames of a tx, and implements vm.EVMLogger.
-func newCallTracer(opts *callTracerOptions) tracers.Tracer {
+func newCallTracer(opts *callTracerOptions) *callTracer {
 	return &callTracer{
 		opts:      opts,
-		callstack: make([]callFrame, 1),
+		callstack: make([]CallFrame, 1),
 	}
 }
 

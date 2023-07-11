@@ -183,7 +183,7 @@ func (re *ChainReplayer) StateAtTransaction(ctx context.Context, block *types.Bl
 }
 
 // ReplayBlock re-execute all transactions in provided block, if base state not provided, base state will be generated instead
-func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, base *state.StateDB, hook ReExecHook) (*state.StateDB, error) {
+func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, base *state.StateDB, hook TransactionHook) (*state.StateDB, error) {
 	if block.NumberU64() == 0 {
 		return nil, errors.New("cannot replay genesis block")
 	}
@@ -199,7 +199,7 @@ func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, ba
 		}
 	}
 	signer := types.MakeSigner(re.blockchain.Config(), block.Number())
-	tracer := NewCallTracerWithHook(block, signer, hook)
+	tracer := NewCallTracerWithHook(block, signer, base, hook)
 	statedb, _, _, _, err := re.processor.Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
 		return nil, err
@@ -217,7 +217,7 @@ func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, ba
 }
 
 // ReplayTransaction re-execute transaction at the provided index in a block
-func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Block, txIndex uint64, hook ReExecHook) (*state.StateDB, error) {
+func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Block, txIndex uint64, hook TransactionHook) (*state.StateDB, error) {
 	transactions := block.Transactions()
 	if txIndex >= uint64(len(transactions)) {
 		return nil, fmt.Errorf("transaction index %d out of range for block %#x", txIndex, block.Hash())
@@ -229,7 +229,7 @@ func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Blo
 	}
 	txCtx := core.NewEVMTxContext(msg)
 	signer := types.MakeSigner(re.blockchain.Config(), block.Number())
-	tracer := NewCallTracerWithHook(block, signer, hook)
+	tracer := NewCallTracerWithHook(block, signer, statedb, hook)
 	vmenv := vm.NewEVM(blkCtx, txCtx, statedb, re.blockchain.Config(), vm.Config{Debug: true, Tracer: tracer})
 	if posa, ok := re.blockchain.Engine().(consensus.PoSA); ok && msg.From() == blkCtx.Coinbase &&
 		posa.IsSystemContract(msg.To()) && msg.GasPrice().Cmp(big.NewInt(0)) == 0 {
