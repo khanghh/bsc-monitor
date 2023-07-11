@@ -36,7 +36,7 @@ func loadTOMLConfig(filename string, conf interface{}) error {
 	return err
 }
 
-type PluginsConfig struct {
+type Config struct {
 	ConfigFile string
 	BinaryDir  string
 	DataDir    string
