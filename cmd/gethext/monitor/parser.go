@@ -16,24 +16,24 @@ type blockParser struct {
 	txAccs    []AccountDetail // contracts created after transaction finished
 }
 
-func (p *blockParser) OnTxStart(ctx *reexec.TxContext, gasLimit uint64) {
+func (p *blockParser) OnTxStart(ret *reexec.TxResult, gasLimit uint64) {
 	p.txAccs = make([]AccountDetail, 0)
 }
 
-func (p *blockParser) OnTxEnd(ctx *reexec.TxContext, resetGas uint64) {
-	txHash := ctx.Transaction.Hash()
-	defer p.data.AccountChangeSet(ctx.Message.From()).AddSentTx(txHash)
-	if ctx.Transaction.Nonce() == 0 {
+func (p *blockParser) OnTxEnd(ret *reexec.TxResult, resetGas uint64) {
+	txHash := ret.Transaction.Hash()
+	defer p.data.AccountChangeSet(ret.Message.From()).AddSentTx(txHash)
+	if ret.Transaction.Nonce() == 0 {
 		accInfo := AccountInfo{FirstTx: txHash}
-		p.data.SetAccountInfo(ctx.Message.From(), &accInfo)
-		log.Info(fmt.Sprintf("Add new account %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
+		p.data.SetAccountInfo(ret.Message.From(), &accInfo)
+		log.Info(fmt.Sprintf("Add new account %#v ", ret.Message.From()), "number", ret.Block.NumberU64(), "tx", txHash.Hex())
 	}
-	if ctx.Reverted {
+	if ret.Reverted {
 		return
 	}
 	for _, acc := range p.txAccs {
 		p.data.SetAccountDetail(&acc)
-		log.Info(fmt.Sprintf("Add new contract %#v ", ctx.Message.From()), "number", ctx.Block.NumberU64(), "tx", txHash.Hex())
+		log.Info(fmt.Sprintf("Add new contract %#v ", ret.Message.From()), "number", ret.Block.NumberU64(), "tx", txHash.Hex())
 	}
 }
 

@@ -1,4 +1,4 @@
-package reexec
+package indexer
 
 import (
 	"encoding/json"
@@ -18,29 +18,29 @@ type CallTracerWithHook struct {
 	hook    ReExecHook
 
 	// variables to track current transaction execution
-	txIndex  uint64    // index of the current transaction
-	txResult *TxResult // context of the current transaction
-	ctxStack []CallCtx // call stack of the current transaction
+	txIndex   uint64     // index of the current transaction
+	txContext *TxContext // context of the current transaction
+	ctxStack  []CallCtx  // call stack of the current transaction
 }
 
 func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 	t.handler.CaptureTxStart(gasLimit)
 	tx := t.block.Transactions()[t.txIndex]
 	msg, _ := tx.AsMessage(t.signer, t.block.BaseFee())
-	t.txResult = &TxResult{
+	t.txContext = &TxContext{
 		Block:       t.block,
 		Transaction: tx,
 		TxIndex:     t.txIndex,
 		Message:     &msg,
 	}
-	t.hook.OnTxStart(t.txResult, gasLimit)
+	t.hook.OnTxStart(t.txContext, gasLimit)
 }
 
 func (t *CallTracerWithHook) CaptureTxEnd(restGas uint64) {
 	t.handler.CaptureTxEnd(restGas)
-	t.txResult.CallStack = t.handler.callstack
-	t.hook.OnTxEnd(t.txResult, restGas)
-	t.txResult = nil
+	t.txContext.CallStack = t.handler.callstack
+	t.hook.OnTxEnd(t.txContext, restGas)
+	t.txContext = nil
 	t.txIndex += 1
 }
 
@@ -48,7 +48,7 @@ func (t *CallTracerWithHook) CaptureStart(env *vm.EVM, from common.Address, to c
 	t.handler.CaptureStart(env, from, to, create, input, gas, value)
 	t.ctxStack = make([]CallCtx, 1)
 	t.ctxStack[0] = CallCtx{
-		txContext: t.txResult,
+		txContext: t.txContext,
 		callFrame: &t.handler.callstack[0],
 	}
 }
@@ -56,7 +56,7 @@ func (t *CallTracerWithHook) CaptureStart(env *vm.EVM, from common.Address, to c
 func (t *CallTracerWithHook) CaptureEnd(output []byte, gasUsed uint64, err error) {
 	t.handler.CaptureEnd(output, gasUsed, err)
 	if err != nil {
-		t.txResult.Reverted = true
+		t.txContext.Reverted = true
 	}
 }
 
@@ -67,7 +67,7 @@ func (t *CallTracerWithHook) CaptureEnter(typ vm.OpCode, from common.Address, to
 	}
 	frame := t.handler.callstack[len(t.handler.callstack)-1]
 	callCtx := CallCtx{
-		txContext: t.txResult,
+		txContext: t.txContext,
 		callFrame: &frame,
 	}
 	size := len(t.ctxStack)
