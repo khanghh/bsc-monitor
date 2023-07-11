@@ -25,14 +25,15 @@ import (
 )
 
 type ChainReplayer struct {
-	db            state.Database   // Isolated memory state cache for chain re-execution
-	bc            *core.BlockChain // Ethereum blockchain provide blocks to be replayed
+	stateCache    state.Database   // Isolated memory state cache for chain re-execution
+	blockchain    *core.BlockChain // Ethereum blockchain provide blocks to be replayed
+	processor     core.Processor   // State processor for replaying blockchain
 	triesInMemory []common.Hash    // Keep track of which tries that still alive in memory
 	maxReExec     uint64           // Max re-execution blocks to regenerate statedb
 }
 
 func (re *ChainReplayer) StateCache() state.Database {
-	return re.db
+	return re.stateCache
 }
 
 func (re *ChainReplayer) SetReExecBlocks(maxReExec uint64) {
@@ -45,19 +46,19 @@ func (re *ChainReplayer) CapTrieDB(limit int) {
 		toEvict := re.triesInMemory[0:capOffset]
 		re.triesInMemory = re.triesInMemory[capOffset:]
 		for _, root := range toEvict {
-			re.db.TrieDB().Dereference(root)
+			re.stateCache.TrieDB().Dereference(root)
 		}
 	}
 }
 
 func (re *ChainReplayer) Reset() {
 	re.triesInMemory = make([]common.Hash, 0)
-	re.db.Purge()
+	re.stateCache.Purge()
 }
 
 // StateAtBlock returns statedb after all transactions in block was executed
 func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (statedb *state.StateDB, err error) {
-	statedb, err = state.New(block.Root(), re.db, nil)
+	statedb, err = state.New(block.Root(), re.stateCache, nil)
 	if err == nil {
 		return statedb, nil
 	}
@@ -68,12 +69,12 @@ func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (
 		if current.NumberU64() == 0 {
 			return nil, errors.New("genesis state is missing")
 		}
-		parent := re.bc.GetBlock(current.ParentHash(), current.NumberU64()-1)
+		parent := re.blockchain.GetBlock(current.ParentHash(), current.NumberU64()-1)
 		if parent == nil {
 			return nil, fmt.Errorf("missing block %#x %d", current.ParentHash(), current.NumberU64()-1)
 		}
 		current = parent
-		statedb, err = state.New(parent.Root(), re.db, nil)
+		statedb, err = state.New(parent.Root(), re.stateCache, nil)
 		if err == nil {
 			break
 		}
@@ -104,11 +105,11 @@ func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (
 			logged = time.Now()
 		}
 		next := current.NumberU64() + 1
-		if current = re.bc.GetBlockByNumber(next); current == nil {
+		if current = re.blockchain.GetBlockByNumber(next); current == nil {
 			return nil, fmt.Errorf("block #%d not found", next)
 		}
 		start := time.Now()
-		statedb, _, _, _, err = re.bc.Processor().Process(current, statedb, vm.Config{})
+		statedb, _, _, _, err = re.processor.Process(current, statedb, vm.Config{})
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +118,7 @@ func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (
 			log.Warn(fmt.Sprintf("Regenerating historical state at block %d took %v", current.NumberU64(), elapsed))
 		}
 		statedb.SetExpectedStateRoot(current.Root())
-		statedb.Finalise(re.bc.Config().IsEIP158(current.Number()))
+		statedb.Finalise(re.blockchain.Config().IsEIP158(current.Number()))
 		statedb.AccountsIntermediateRoot()
 		root, _, err := statedb.Commit(nil)
 		if err != nil {
@@ -125,7 +126,7 @@ func (re *ChainReplayer) StateAtBlock(ctx context.Context, block *types.Block) (
 		}
 		re.triesInMemory = append(re.triesInMemory, root)
 	}
-	nodes, imgs := re.db.TrieDB().Size()
+	nodes, imgs := re.stateCache.TrieDB().Size()
 	log.Info("Historical state regenerated", "block", current.NumberU64(), "elapsed", time.Since(start), "nodes", nodes, "preimages", imgs)
 	return statedb, nil
 }
@@ -137,7 +138,7 @@ func (re *ChainReplayer) StateAtTransaction(ctx context.Context, block *types.Bl
 		return nil, vm.BlockContext{}, nil, errors.New("no transaction in genesis")
 	}
 	// Create the parent state database
-	parent := re.bc.GetBlock(block.ParentHash(), block.NumberU64()-1)
+	parent := re.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 	if parent == nil {
 		return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
 	}
@@ -151,18 +152,18 @@ func (re *ChainReplayer) StateAtTransaction(ctx context.Context, block *types.Bl
 		return nil, vm.BlockContext{}, statedb, nil
 	}
 	// Recompute transactions up to the target index.
-	signer := types.MakeSigner(re.bc.Config(), block.Number())
+	signer := types.MakeSigner(re.blockchain.Config(), block.Number())
 	for idx, tx := range block.Transactions() {
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := tx.AsMessage(signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
-		context := core.NewEVMBlockContext(block.Header(), re.bc, nil)
+		context := core.NewEVMBlockContext(block.Header(), re.blockchain, nil)
 		if uint64(idx) == txIndex {
 			return msg, context, statedb, nil
 		}
 		// Not yet the searched for transaction, execute on top of the current state
-		vmenv := vm.NewEVM(context, txContext, statedb, re.bc.Config(), vm.Config{})
-		if posa, ok := re.bc.Engine().(consensus.PoSA); ok && msg.From() == context.Coinbase &&
+		vmenv := vm.NewEVM(context, txContext, statedb, re.blockchain.Config(), vm.Config{})
+		if posa, ok := re.blockchain.Engine().(consensus.PoSA); ok && msg.From() == context.Coinbase &&
 			posa.IsSystemContract(msg.To()) && msg.GasPrice().Cmp(big.NewInt(0)) == 0 {
 			balance := statedb.GetBalance(consensus.SystemAddress)
 			if balance.Cmp(common.Big0) > 0 {
@@ -188,7 +189,7 @@ func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, ba
 	}
 	var err error
 	if base == nil {
-		parent := re.bc.GetBlock(block.ParentHash(), block.NumberU64()-1)
+		parent := re.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 		if parent == nil {
 			return nil, fmt.Errorf("missing parent block %#x %d", block.ParentHash(), block.NumberU64()-1)
 		}
@@ -197,14 +198,14 @@ func (re *ChainReplayer) ReplayBlock(ctx context.Context, block *types.Block, ba
 			return nil, fmt.Errorf("missing base state: %v", err)
 		}
 	}
-	signer := types.MakeSigner(re.bc.Config(), block.Number())
+	signer := types.MakeSigner(re.blockchain.Config(), block.Number())
 	tracer := NewCallTracerWithHook(block, signer, hook)
-	statedb, _, _, _, err := re.bc.Processor().Process(block, base, vm.Config{Debug: true, Tracer: tracer})
+	statedb, _, _, _, err := re.processor.Process(block, base, vm.Config{Debug: true, Tracer: tracer})
 	if err != nil {
 		return nil, err
 	}
 	statedb.SetExpectedStateRoot(block.Root())
-	statedb.Finalise(re.bc.Config().IsEIP158(block.Number()))
+	statedb.Finalise(re.blockchain.Config().IsEIP158(block.Number()))
 	statedb.AccountsIntermediateRoot()
 	// commit to cache the state to database
 	root, _, err := statedb.Commit(nil)
@@ -227,8 +228,10 @@ func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Blo
 		return nil, fmt.Errorf("failed to retrieving state at tx index %d in block %d: %v", txIndex, block.NumberU64(), err)
 	}
 	txCtx := core.NewEVMTxContext(msg)
-	vmenv := vm.NewEVM(blkCtx, txCtx, statedb, re.bc.Config(), vm.Config{})
-	if posa, ok := re.bc.Engine().(consensus.PoSA); ok && msg.From() == blkCtx.Coinbase &&
+	signer := types.MakeSigner(re.blockchain.Config(), block.Number())
+	tracer := NewCallTracerWithHook(block, signer, hook)
+	vmenv := vm.NewEVM(blkCtx, txCtx, statedb, re.blockchain.Config(), vm.Config{Debug: true, Tracer: tracer})
+	if posa, ok := re.blockchain.Engine().(consensus.PoSA); ok && msg.From() == blkCtx.Coinbase &&
 		posa.IsSystemContract(msg.To()) && msg.GasPrice().Cmp(big.NewInt(0)) == 0 {
 		balance := statedb.GetBalance(consensus.SystemAddress)
 		if balance.Cmp(common.Big0) > 0 {
@@ -246,8 +249,9 @@ func (re *ChainReplayer) ReplayTransaction(ctx context.Context, block *types.Blo
 
 func NewChainReplayer(db state.Database, bc *core.BlockChain) *ChainReplayer {
 	return &ChainReplayer{
-		db:        db,
-		bc:        bc,
-		maxReExec: math.MaxUint64,
+		stateCache: db,
+		blockchain: bc,
+		processor:  NewReplayProcessor(bc.Config(), bc, bc.Engine()),
+		maxReExec:  math.MaxUint64,
 	}
 }
