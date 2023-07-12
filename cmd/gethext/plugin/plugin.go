@@ -151,8 +151,7 @@ func (ctx *sharedCtx) OpenDatabase(prefix string) ethdb.Database {
 	return rawdb.NewTable(ctx.db, string(plPrefix))
 }
 
-// PluginCtx provides access to internal services for a plugin, each plugin
-// has it own context
+// PluginCtx provides access to internal services for a plugin, each plugin has it own context
 type PluginCtx struct {
 	*sharedCtx
 	DataDir    string
