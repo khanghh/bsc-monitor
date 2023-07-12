@@ -34,10 +34,11 @@ type EthExplorerConfig struct {
 	Monitor     *monitor.Config
 }
 
-func (c *EthExplorerConfig) sanitize() {
+func (c *EthExplorerConfig) sanitize() error {
 	if len(c.Plugins.DataDir) == 0 {
 		c.Plugins.DataDir = filepath.Join(c.InstanceDir, pluginsDataDir)
 	}
+	return nil
 }
 
 type EthExplorer struct {
@@ -81,6 +82,10 @@ func (s *EthExplorer) Stop() error {
 }
 
 func NewExplorerService(cfg *EthExplorerConfig, node *node.Node, eth *eth.Ethereum) (*EthExplorer, error) {
+	if err := cfg.sanitize(); err != nil {
+		return nil, err
+	}
+
 	diskdb, err := node.OpenDatabase(extDatabaseName, extDatabaseCache, extDatabaseHandle, extNamespace, false)
 	if err != nil {
 		return nil, err

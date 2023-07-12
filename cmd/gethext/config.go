@@ -166,6 +166,7 @@ func loadConfig(ctx *cli.Context) *gethConfig {
 		pluginDir = ctx.GlobalString(pluginsDirFlag.Name)
 	}
 	cfg.Plugins.BinaryDir = resolvePluginsDir(pluginDir)
+	cfg.Plugins.DataDir = cfg.Plugins.BinaryDir
 	if ctx.IsSet(pluginsEnabledFlag.Name) {
 		cfg.Plugins.Enabled = ctx.GlobalStringSlice(pluginsEnabledFlag.Name)
 	}

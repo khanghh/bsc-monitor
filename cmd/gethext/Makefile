@@ -32,7 +32,7 @@ ifeq ($(shell go env GOOS), darwin)
 else
 	$(eval OUTPUT:=$(BUILD_DIR)/plugins/$*.so)
 endif
-	go build -buildmode=plugin $(LDFLAGS) $(GCFLAGS) -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$*/cmd
+	go build -buildmode=plugin $(LDFLAGS) $(GCFLAGS) -o $(OUTPUT) $(CURDIR)/cmd/gethext/plugins/$*/main
 	@echo "Done building."
 
 clean: ## Clean build directory
