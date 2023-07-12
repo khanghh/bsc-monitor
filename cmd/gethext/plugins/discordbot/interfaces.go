@@ -8,5 +8,5 @@ import (
 type DiscordBot interface {
 	RegisterCommand(cmd ...dgc.Command)
 	UnregisterCommand(name string)
-	SendChannelMessage(messgae *discordgo.MessageSend) error
+	SendChannelMessage(channelID string, message *discordgo.MessageSend) error
 }

@@ -15,7 +15,6 @@ const (
 type DiscordConfig struct {
 	BotToken     string   `json:"botToken"`
 	CmdPrefix    string   `json:"cmdPrefix"`
-	ChannelId    string   `json:"channelId"`
 	AllowedRoles []string `json:"allowedRoles"`
 }
 
@@ -25,9 +24,6 @@ func (cfg *DiscordConfig) sanitize() error {
 	}
 	if cfg.BotToken == "" {
 		return errors.New("bot token not provided")
-	}
-	if cfg.ChannelId == "" {
-		return errors.New("channel id not provided")
 	}
 	return nil
 }
@@ -46,7 +42,7 @@ func (p *DiscordPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 		return err
 	}
 	var err error
-	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix, config.ChannelId)
+	p.bot, err = NewDiscordBot(config.BotToken, config.CmdPrefix)
 	if err != nil {
 		log.Error("Could not initialize discord bot", "error", err)
 		return err
