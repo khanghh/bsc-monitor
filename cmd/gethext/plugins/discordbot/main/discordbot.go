@@ -10,13 +10,14 @@ import (
 type discordBot struct {
 	Session   *discordgo.Session
 	CmdRouter *dgc.Router
-	Commands  map[string]*dgc.Command
+	Commands  map[string]dgc.Command
 }
 
 func (bot *discordBot) rebuildRouter() {
-	commands := make([]*dgc.Command, 0)
+	commands := make([]*dgc.Command, 0, len(bot.Commands))
 	for _, cmd := range bot.Commands {
-		commands = append(commands, cmd)
+		copyCmd := cmd
+		commands = append(commands, &copyCmd)
 	}
 	bot.CmdRouter.Commands = commands
 }
@@ -31,7 +32,7 @@ func (bot *discordBot) UnregisterCommand(name string) {
 func (bot *discordBot) RegisterCommand(cmds ...dgc.Command) {
 	if len(cmds) > 0 {
 		for _, cmd := range cmds {
-			bot.Commands[cmd.Name] = &cmd
+			bot.Commands[cmd.Name] = cmd
 		}
 		bot.rebuildRouter()
 	}
@@ -69,6 +70,6 @@ func NewDiscordBot(botToken string, cmdPrefix string) (*discordBot, error) {
 	return &discordBot{
 		Session:   botSession,
 		CmdRouter: cmdRouter,
-		Commands:  make(map[string]*dgc.Command),
+		Commands:  make(map[string]dgc.Command),
 	}, nil
 }
