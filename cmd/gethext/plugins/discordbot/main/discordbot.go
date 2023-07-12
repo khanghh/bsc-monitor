@@ -10,7 +10,6 @@ import (
 type discordBot struct {
 	Session   *discordgo.Session
 	CmdRouter *dgc.Router
-	ChannelId string
 	Commands  map[string]*dgc.Command
 }
 
@@ -42,8 +41,8 @@ func (bot *discordBot) SetCmdPrefix(cmdPrefix string) {
 	bot.CmdRouter.Prefixes = []string{cmdPrefix}
 }
 
-func (bot *discordBot) SendChannelMessage(messgae *discordgo.MessageSend) error {
-	_, err := bot.Session.ChannelMessageSendComplex(bot.ChannelId, messgae)
+func (bot *discordBot) SendChannelMessage(channelID string, messgae *discordgo.MessageSend) error {
+	_, err := bot.Session.ChannelMessageSendComplex(channelID, messgae)
 	return err
 }
 
@@ -53,7 +52,7 @@ func (bot *discordBot) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func NewDiscordBot(botToken string, cmdPrefix string, channelId string) (*discordBot, error) {
+func NewDiscordBot(botToken string, cmdPrefix string) (*discordBot, error) {
 	botSession, err := discordgo.New("Bot " + botToken)
 	if err != nil {
 		return nil, err
@@ -70,7 +69,6 @@ func NewDiscordBot(botToken string, cmdPrefix string, channelId string) (*discor
 	return &discordBot{
 		Session:   botSession,
 		CmdRouter: cmdRouter,
-		ChannelId: channelId,
 		Commands:  make(map[string]*dgc.Command),
 	}, nil
 }
