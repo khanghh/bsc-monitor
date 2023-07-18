@@ -3,11 +3,15 @@ package abiutils
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"os"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/status-im/keycard-go/hexutils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseMethodIds(t *testing.T) {
@@ -68,4 +72,44 @@ func TestABIParserGetInterfaces(t *testing.T) {
 	ifs, remaining = parser.ParseInterfaces(testERC721Sigs)
 	assert.Contains(t, getNameList(ifs), "IERC721")
 	assert.Equal(t, remaining, unknowns)
+}
+
+func TestUnpackInput(t *testing.T) {
+	erc20 := defaultInterfaces["IERC20"]
+	type TransferArgs struct {
+		From   common.Address
+		To     common.Address
+		Amount *big.Int
+	}
+
+	tests := []struct {
+		input        []byte
+		method       string
+		expectedArgs TransferArgs
+	}{
+		{
+			input:  hexutils.HexToBytes("000000000000000000000000a73bc58956dc002ab777452aa0b60d37b4f6d6370000000000000000000000000000000000000000000000000de0b6b3a7640000"),
+			method: "transfer",
+			expectedArgs: TransferArgs{
+				To:     common.HexToAddress("0xA73BC58956dC002Ab777452aa0b60d37B4f6d637"),
+				Amount: big.NewInt(1000000000000000000),
+			},
+		},
+		{
+			input:  hexutils.HexToBytes("00000000000000000000000064108bbde14cc327ebba159e1937a9791ce0e8a9000000000000000000000000c58bb74606b73c5043b75d7aa25ebe1d5d4e7c720000000000000000000000000000000000000000000000000000000062de20d3"),
+			method: "transferFrom",
+			expectedArgs: TransferArgs{
+				From:   common.HexToAddress("0x64108bbDe14CC327EBba159e1937A9791Ce0e8a9"),
+				To:     common.HexToAddress("0xc58Bb74606b73c5043B75d7Aa25ebe1D5D4E7c72"),
+				Amount: big.NewInt(1658724563),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		var args TransferArgs
+		err := erc20.UnpackInput(&args, test.method, test.input)
+		require.NoError(t, err)
+		assert.Equal(t, test.expectedArgs, args)
+	}
 }
