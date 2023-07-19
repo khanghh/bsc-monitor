@@ -95,6 +95,7 @@ func (m *TokenTransferMonitor) OnTxEnd(ctx *reexec.Context, ret *reexec.TxResult
 			threshold = ParseAmount(thrsVal, transfer.Token.Decimals)
 		}
 		if threshold != nil && transfer.Value.Cmp(threshold) >= 0 {
+			log.Warn("Whale transfer detected!", "tx", tx.Hash().Hex())
 			m.feed.Send(whalemonitor.WhaleEvent{
 				Type:      whalemonitor.TypeTokenTransfer,
 				TxHash:    tx.Hash(),
