@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/discordbot"
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/whalemonitor"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/lus/dgc"
 )
 
@@ -43,7 +42,7 @@ func (bot *WhaleBot) Stop() {
 }
 
 func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
-	title := "Whale transfer detected"
+	title := "Whale Transfer Detected!"
 	var transferMsg strings.Builder
 	for idx, transfer := range event.Transfers {
 		var tokenAmount string
@@ -51,11 +50,11 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 			amount := AmountString(transfer.Value, transfer.Token.Decimals)
 			tokenAmount = fmt.Sprintf("%s %s", amount, transfer.Token.Symbol)
 		} else {
-			amount := AmountString(transfer.Value, params.Ether)
+			amount := AmountString(transfer.Value, 18)
 			tokenAmount = fmt.Sprintf("%s ETH", amount)
 		}
 		transferMsg.WriteString(fmt.Sprintf(
-			"%d. [%s](%s) => [%s](%s): %s",
+			"%d. [%s](%s) => [%s](%s): %s\n",
 			idx+1,
 			transfer.From, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.From),
 			transfer.To, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.To),
@@ -65,7 +64,7 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 	fields := []*discordgo.MessageEmbedField{
 		{
 			Name:  "TxHash",
-			Value: event.TxHash.String(),
+			Value: fmt.Sprintf("[%s](%s/tx/%s)", event.TxHash, bot.config.ExplorerUrl, event.TxHash),
 		},
 		{
 			Name:  "Transfers",
@@ -76,7 +75,6 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 		Embed: &discordgo.MessageEmbed{
 			Title:     title,
 			Type:      "rich",
-			URL:       fmt.Sprintf("%s/tx/%s", bot.config.ExplorerUrl, event.TxHash),
 			Color:     0x3498db,
 			Fields:    fields,
 			Timestamp: time.Now().Format(time.RFC3339),
