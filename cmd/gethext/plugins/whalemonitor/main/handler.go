@@ -14,6 +14,7 @@ import (
 // handler serves as a base type for monitor processors.
 type handler struct {
 	*plugin.PluginCtx
+	config *Config
 	client *rpc.Client
 	feed   event.Feed
 }
