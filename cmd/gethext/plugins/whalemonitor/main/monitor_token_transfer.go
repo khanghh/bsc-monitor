@@ -12,8 +12,7 @@ import (
 
 type TokenTransferMonitor struct {
 	*handler
-	thresholds map[common.Address]float64
-	transfers  []whalemonitor.TokenTransfer
+	transfers []whalemonitor.TokenTransfer
 }
 
 func (m *TokenTransferMonitor) OnTxStart(ctx *reexec.Context, gasLimit uint64) {
@@ -91,8 +90,8 @@ func (m *TokenTransferMonitor) OnTxEnd(ctx *reexec.Context, ret *reexec.TxResult
 	for _, transfer := range m.transfers {
 		var threshold *big.Int = nil
 		if transfer.Token == nil {
-			threshold = ParseAmount(m.thresholds[nilAddress], 18)
-		} else if thrsVal, exist := m.thresholds[transfer.Token.Address]; exist {
+			threshold = ParseAmount(m.config.Thresholds[nilAddress], 18)
+		} else if thrsVal, exist := m.config.Thresholds[transfer.Token.Address]; exist {
 			threshold = ParseAmount(thrsVal, transfer.Token.Decimals)
 		}
 		if threshold != nil && transfer.Value.Cmp(threshold) >= 0 {
@@ -106,9 +105,8 @@ func (m *TokenTransferMonitor) OnTxEnd(ctx *reexec.Context, ret *reexec.TxResult
 	}
 }
 
-func NewTokenTransferMonitor(handler *handler, threshold map[common.Address]float64) *TokenTransferMonitor {
+func NewTokenTransferMonitor(handler *handler) *TokenTransferMonitor {
 	return &TokenTransferMonitor{
-		handler:    handler,
-		thresholds: threshold,
+		handler: handler,
 	}
 }
