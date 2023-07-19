@@ -30,8 +30,7 @@ var (
 
 type WhaleBot struct {
 	discordbot.DiscordBot
-	config  *Config
-	handler *handler
+	*handler
 	whaleCh chan whalemonitor.WhaleEvent
 	sub     event.Subscription
 }
@@ -43,8 +42,9 @@ func (bot *WhaleBot) Stop() {
 
 func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 	title := "Whale Transfer Detected!"
-	var transferMsg strings.Builder
-	var shortTransferMsg strings.Builder
+	var desc strings.Builder
+	desc.WriteString(fmt.Sprintf("**TxHash**\n [%s](%s/tx/%s)\n", event.TxHash, bot.config.ExplorerUrl, event.TxHash))
+	desc.WriteString("\n**Transfers**\n")
 	for idx, transfer := range event.Transfers {
 		var tokenAmount string
 		if transfer.Token != nil {
@@ -54,42 +54,21 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 			amount := AmountString(transfer.Value, 18)
 			tokenAmount = fmt.Sprintf("%s ETH", amount)
 		}
-		transferMsg.WriteString(fmt.Sprintf(
+		desc.WriteString(fmt.Sprintf(
 			"%d. [%s](%s) => [%s](%s): %s\n",
 			idx+1,
 			transfer.From, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.From),
 			transfer.To, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.To),
 			tokenAmount,
 		))
-		shortTransferMsg.WriteString(fmt.Sprintf(
-			"%d. %s => %s: %s\n",
-			idx+1,
-			transfer.From,
-			transfer.To,
-			tokenAmount,
-		))
-	}
-	transferContent := transferMsg.String()
-	if transferMsg.Len() > 1024 { // discord limit 1024 character
-		transferContent = shortTransferMsg.String()
-	}
-	fields := []*discordgo.MessageEmbedField{
-		{
-			Name:  "TxHash",
-			Value: fmt.Sprintf("[%s](%s/tx/%s)", event.TxHash, bot.config.ExplorerUrl, event.TxHash),
-		},
-		{
-			Name:  "Transfers",
-			Value: transferContent,
-		},
 	}
 	return &discordgo.MessageSend{
 		Embed: &discordgo.MessageEmbed{
-			Title:     title,
-			Type:      "rich",
-			Color:     0x3498db,
-			Fields:    fields,
-			Timestamp: time.Now().Format(time.RFC3339),
+			Title:       title,
+			Description: desc.String(),
+			Type:        "rich",
+			Color:       0x3498db,
+			Timestamp:   time.Now().Format(time.RFC3339),
 		},
 	}
 }
@@ -160,9 +139,8 @@ func (bot *WhaleBot) handleShowConfig(ctx *dgc.Ctx) {
 	bot.sendChannelMessage(msg)
 }
 
-func NewWhaleBot(config *Config, handler *handler) (*WhaleBot, error) {
+func NewWhaleBot(handler *handler) (*WhaleBot, error) {
 	bot := &WhaleBot{
-		config:  config,
 		handler: handler,
 		whaleCh: make(chan whalemonitor.WhaleEvent),
 	}
