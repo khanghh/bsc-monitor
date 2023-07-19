@@ -46,6 +46,9 @@ type callTracerOptions struct {
 // newCallTracer returns a native go tracer which tracks
 // call frames of a tx, and implements vm.EVMLogger.
 func newCallTracer(opts *callTracerOptions) *callTracer {
+	if opts == nil {
+		opts = &callTracerOptions{}
+	}
 	return &callTracer{
 		opts:      opts,
 		callstack: make([]CallFrame, 1),
