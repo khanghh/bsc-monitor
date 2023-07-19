@@ -87,8 +87,8 @@ func (bot *WhaleBot) notifyLoop() {
 			return
 		case event := <-bot.whaleCh:
 			msg := bot.renderWhaleMessage(&event)
-			if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-				log.Error("Could not send discord messaqge", "error", err)
+			if msg != nil {
+				bot.sendChannelMessage(msg)
 			}
 		}
 	}
@@ -111,7 +111,8 @@ func (bot *WhaleBot) registerBotCommands() {
 
 func (bot *WhaleBot) sendChannelMessage(msg *discordgo.MessageSend) error {
 	if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-		log.Error("Could not send discord message", "error", err)
+		msgJson, _ := json.Marshal(msg)
+		log.Error("Could not send discord message", "msg", string(msgJson), "error", err)
 		return err
 	}
 	return nil
