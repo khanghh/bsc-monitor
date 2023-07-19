@@ -44,11 +44,12 @@ func (bot *WhaleBot) Stop() {
 func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 	title := "Whale Transfer Detected!"
 	var transferMsg strings.Builder
+	var shortTransferMsg strings.Builder
 	for idx, transfer := range event.Transfers {
 		var tokenAmount string
 		if transfer.Token != nil {
 			amount := AmountString(transfer.Value, transfer.Token.Decimals)
-			tokenAmount = fmt.Sprintf("%s %s", amount, transfer.Token.Symbol)
+			tokenAmount = fmt.Sprintf("%s [%s](%s/address/%s)", amount, transfer.Token.Symbol, bot.config.ExplorerUrl, transfer.Token.Address)
 		} else {
 			amount := AmountString(transfer.Value, 18)
 			tokenAmount = fmt.Sprintf("%s ETH", amount)
@@ -60,6 +61,17 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 			transfer.To, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.To),
 			tokenAmount,
 		))
+		shortTransferMsg.WriteString(fmt.Sprintf(
+			"%d. %s => %s: %s\n",
+			idx+1,
+			transfer.From,
+			transfer.To,
+			tokenAmount,
+		))
+	}
+	transferContent := transferMsg.String()
+	if transferMsg.Len() > 1024 { // discord limit 1024 character
+		transferContent = shortTransferMsg.String()
 	}
 	fields := []*discordgo.MessageEmbedField{
 		{
@@ -68,7 +80,7 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 		},
 		{
 			Name:  "Transfers",
-			Value: transferMsg.String(),
+			Value: transferContent,
 		},
 	}
 	return &discordgo.MessageSend{
@@ -103,8 +115,7 @@ func (bot *WhaleBot) notifyLoop() {
 	}
 }
 
-func (bot *WhaleBot) addDiscordCommands() {
-	fmt.Println("addDiscordCommands")
+func (bot *WhaleBot) registerBotCommands() {
 	bot.RegisterCommand(
 		dgc.Command{
 			Name:        "reload",
@@ -119,28 +130,34 @@ func (bot *WhaleBot) addDiscordCommands() {
 	)
 }
 
+func (bot *WhaleBot) sendChannelMessage(msg *discordgo.MessageSend) error {
+	if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
+		log.Error("Could not send discord message", "error", err)
+		return err
+	}
+	return nil
+}
+
 func (bot *WhaleBot) handleReload(ctx *dgc.Ctx) {
-	fmt.Println("handleReload")
 	configFile := path.Join(bot.handler.DataDir, defaultConfigFile)
 	msg := msgConfigReloadOK
 	if err := loadConfig(configFile, bot.config); err != nil {
 		log.Error("Failed to reload config file", "error", err)
 		msg = msgConfigReloadFail
 	}
-	if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-		log.Error("Could not send discord message", "error", err)
-	}
+	buf, _ := json.MarshalIndent(bot.config, "", " ")
+	bot.sendChannelMessage(&discordgo.MessageSend{
+		Content: fmt.Sprintf("```json\n%s\n```", string(buf)),
+	})
+	bot.sendChannelMessage(msg)
 }
 
 func (bot *WhaleBot) handleShowConfig(ctx *dgc.Ctx) {
-	fmt.Println("handleShowConfig")
 	buf, _ := json.MarshalIndent(bot.config, "", " ")
 	msg := &discordgo.MessageSend{
 		Content: fmt.Sprintf("```json\n%s\n```", string(buf)),
 	}
-	if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-		log.Error("Could not send discord message", "error", err)
-	}
+	bot.sendChannelMessage(msg)
 }
 
 func NewWhaleBot(config *Config, handler *handler) (*WhaleBot, error) {
@@ -154,7 +171,7 @@ func NewWhaleBot(config *Config, handler *handler) (*WhaleBot, error) {
 	} else {
 		return nil, errors.New("discord bot plugin not enabled")
 	}
-	bot.addDiscordCommands()
+	bot.registerBotCommands()
 	bot.sub = handler.SubscribeWhaleEvent(bot.whaleCh)
 	go bot.notifyLoop()
 	return bot, nil
