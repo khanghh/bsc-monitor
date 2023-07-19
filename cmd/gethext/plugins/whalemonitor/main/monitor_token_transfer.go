@@ -45,7 +45,7 @@ func (m *TokenTransferMonitor) OnCallExit(ctx *reexec.Context, call *reexec.Call
 	}
 
 	_, tx := ctx.Transaction()
-	if call.Value.Cmp(big.NewInt(0)) > 0 {
+	if call.Value != nil && call.Value.Cmp(big.NewInt(0)) > 0 {
 		m.transfers = append(m.transfers, whalemonitor.TokenTransfer{
 			From:  call.From,
 			To:    call.To,
@@ -89,13 +89,13 @@ func (m *TokenTransferMonitor) OnTxEnd(ctx *reexec.Context, ret *reexec.TxResult
 
 	// Check if any token transfer meet the whale threshold
 	for _, transfer := range m.transfers {
-		var threshold *big.Int
-		if transfer.Token != nil {
-			threshold = ParseAmount(m.thresholds[nilAddress], transfer.Token.Decimals)
-		} else {
+		var threshold *big.Int = nil
+		if transfer.Token == nil {
 			threshold = ParseAmount(m.thresholds[nilAddress], 18)
+		} else if thrsVal, exist := m.thresholds[transfer.Token.Address]; exist {
+			threshold = ParseAmount(thrsVal, transfer.Token.Decimals)
 		}
-		if transfer.Value.Cmp(threshold) >= 0 {
+		if threshold != nil && transfer.Value.Cmp(threshold) >= 0 {
 			m.feed.Send(whalemonitor.WhaleEvent{
 				Type:      whalemonitor.TypeTokenTransfer,
 				TxHash:    tx.Hash(),
