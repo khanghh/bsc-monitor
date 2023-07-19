@@ -22,12 +22,12 @@ func (p *Parlia) getCurrentValidatorsBeforeLuban(blockHash common.Hash, blockNum
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel when we are finished consuming integers
 
-	data, err := p.validatorSetABI.Pack(method)
+	data, err := p.validatorSetABIBeforeLuban.Pack(method)
 	if err != nil {
 		log.Error("Unable to pack tx for getValidators", "error", err)
 		return nil, err
 	}
-	// call
+	// do smart contract call
 	header := p.ethAPI.Chain().GetHeader(blockHash, blockNum.Uint64())
 	state, err := p.ethAPI.Chain().StateAt(header.Root)
 	if err != nil {
@@ -49,9 +49,9 @@ func (p *Parlia) getCurrentValidatorsBeforeLuban(blockHash common.Hash, blockNum
 		return nil, result.Err
 	}
 
-	ret := []common.Address{}
-	if err := p.validatorSetABI.UnpackIntoInterface(&ret, method, result.Return()); err != nil {
+	var valSet []common.Address
+	if err := p.validatorSetABIBeforeLuban.UnpackIntoInterface(&valSet, method, result.Return()); err != nil {
 		return nil, err
 	}
-	return ret, nil
+	return valSet, nil
 }
