@@ -52,7 +52,7 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 			tokenAmount = fmt.Sprintf("%s [%s](%s/address/%s)", amount, transfer.Token.Symbol, bot.config.ExplorerUrl, transfer.Token.Address)
 		} else {
 			amount := AmountString(transfer.Value, 18)
-			tokenAmount = fmt.Sprintf("%s ETH", amount)
+			tokenAmount = fmt.Sprintf("%s %s", amount, bot.config.NativeToken)
 		}
 		desc.WriteString(fmt.Sprintf(
 			"%d. [%s](%s) => [%s](%s): %s\n",

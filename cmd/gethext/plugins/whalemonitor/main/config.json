@@ -1,6 +1,7 @@
 {
   "explorerUrl": "http://bscscan.com",
   "channelId": "1083107210021834772",
+  "nativeToken": "BNB",
   "thresholds": {
     "ETH": 324234,
     "0x55d398326f99059fF775485246999027B3197955": 200000,
