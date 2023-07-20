@@ -30,11 +30,11 @@ func (t *handler) getERC20Info(addr common.Address) (*whalemonitor.ERC20Token, e
 		return nil, err
 	}
 	name, err := erc20.Name(&bind.CallOpts{})
-	if err != nil {
+	if err != nil || name == "" {
 		name = "Unknown"
 	}
 	symbol, err := erc20.Symbol(&bind.CallOpts{})
-	if err != nil {
+	if err != nil || symbol == "" {
 		symbol = "Unknown"
 	}
 	decimals, err := erc20.Decimals(&bind.CallOpts{})
