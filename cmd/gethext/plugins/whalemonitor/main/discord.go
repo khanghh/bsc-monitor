@@ -133,7 +133,7 @@ func (bot *WhaleBot) handleReload(ctx *dgc.Ctx) {
 }
 
 func (bot *WhaleBot) handleShowConfig(ctx *dgc.Ctx) {
-	buf, _ := json.MarshalIndent(bot.config, "", " ")
+	buf, _ := json.MarshalIndent(bot.config, "", "  ")
 	msg := &discordgo.MessageSend{
 		Content: fmt.Sprintf("```json\n%s\n```", string(buf)),
 	}
