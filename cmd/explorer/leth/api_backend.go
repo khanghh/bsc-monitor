@@ -28,7 +28,7 @@ type LEthAPIBackend struct {
 
 // General Ethereum API
 func (b *LEthAPIBackend) SyncProgress() ethereum.SyncProgress {
-	panic("not implement")
+	return b.leth.Syncer().Progress()
 }
 
 func (b *LEthAPIBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
@@ -40,7 +40,7 @@ func (b *LEthAPIBackend) FeeHistory(ctx context.Context, blockCount int, lastBlo
 }
 
 func (b *LEthAPIBackend) Chain() *core.BlockChain {
-	return b.leth.blockchain
+	return nil
 }
 
 func (b *LEthAPIBackend) ChainDb() ethdb.Database {
