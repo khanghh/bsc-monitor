@@ -1,10 +1,13 @@
 package leth
 
 import (
+	"context"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -26,12 +29,12 @@ type OdrBackend interface {
 
 	// GetChainSegment retrieves a chain segment with a specified number of blocks starting from 'headBlock',
 	// return the chain segment and highest block number of the remote chain
-	GetChainSegment(headBlock *types.Block, count uint64) (types.Blocks, uint64, error)
+	GetChainSegment(fromBlock uint64, toBlock uint64) (types.Blocks, uint64, error)
 
 	// GetCodeAt retrieves the code stored at 'addr'.
 	GetCodeAt(addr common.Address) ([]byte, error)
 
-	// GetTransactionByHash retrieves a transaction by its hash.
+	// GetTransactionByHash retrieves a transaction by its hash, also returns the block hash, transaction index in block
 	GetTransactionByHash(hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, error)
 
 	// GetTransactionReceipt retrieves the receipt of a transaction identified by its hash.
@@ -54,19 +57,58 @@ func (r *RpcOdr) Database() ethdb.Database {
 }
 
 func (r *RpcOdr) GetBlockByNumber(number uint64) (*types.Block, error) {
-	return nil, nil
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	return ethclient.NewClient(r.client).BlockByNumber(ctx, big.NewInt(int64(number)))
 }
 
 func (r *RpcOdr) GetBlockByHash(hash common.Hash) (*types.Block, error) {
-	return nil, nil
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	return ethclient.NewClient(r.client).BlockByHash(ctx, hash)
 }
 
-func (r *RpcOdr) GetChainSegment(headBlock *types.Block, maxBlock uint64) (types.Blocks, uint64, error) {
-	return nil, 0, nil
+func (r *RpcOdr) GetChainSegment(startNum uint64, maxCount uint64) (types.Blocks, uint64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	remoteHeight, err := ethclient.NewClient(r.client).BlockNumber(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	fetchCount := maxCount
+	if remoteHeight-startNum < maxCount {
+		fetchCount = remoteHeight - startNum
+	}
+
+	batch := []rpc.BatchElem{}
+	var idx uint64
+	for idx = 1; idx < fetchCount; idx++ {
+		blockNum := int64(startNum + idx)
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getBlockByNumber",
+			Args:   []interface{}{big.NewInt(blockNum), true},
+			Result: new(types.Block),
+		})
+	}
+	if err := r.client.BatchCallContext(ctx, batch); err != nil {
+		return nil, 0, err
+	}
+
+	ret := types.Blocks{}
+	for _, elem := range batch {
+		if elem.Error != nil {
+			break
+		}
+		ret = append(ret, elem.Result.(*types.Block))
+	}
+	return ret, remoteHeight, nil
 }
 
 func (r *RpcOdr) GetCodeAt(addr common.Address) ([]byte, error) {
-	return nil, nil
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	return ethclient.NewClient(r.client).CodeAt(ctx, addr, nil)
 }
 
 func (r *RpcOdr) GetTransactionByHash(hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, error) {
@@ -74,11 +116,33 @@ func (r *RpcOdr) GetTransactionByHash(hash common.Hash) (*types.Transaction, com
 }
 
 func (r *RpcOdr) GetTransactionReceipt(hash common.Hash) (*types.Receipt, error) {
-	return nil, nil
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	return ethclient.NewClient(r.client).TransactionReceipt(ctx, hash)
 }
 
 func (r *RpcOdr) GetBlockReceipts(block *types.Block) (types.Receipts, error) {
-	return nil, nil
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	batch := []rpc.BatchElem{}
+	for _, tx := range block.Transactions() {
+		batch = append(batch, rpc.BatchElem{
+			Method: "eth_getTransactionReceipt",
+			Args:   []interface{}{tx.Hash()},
+			Result: new(types.Receipt),
+		})
+	}
+	if err := r.client.BatchCallContext(ctx, batch); err != nil {
+		return nil, err
+	}
+	ret := make(types.Receipts, len(batch))
+	for idx, elem := range batch {
+		if elem.Error != nil {
+			return nil, elem.Error
+		}
+		ret[idx] = elem.Result.(*types.Receipt)
+	}
+	return ret, nil
 }
 
 func (r *RpcOdr) Close() {
