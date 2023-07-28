@@ -12,6 +12,7 @@ var nilAddress = common.Address{}
 
 var defaultConfig = Config{
 	ExplorerUrl: "https://bscscan.com",
+	NativeToken: "BNB",
 	Thresholds: map[common.Address]float64{
 		common.Address{}: 500, // ETH
 		common.HexToAddress("0xA3183498b579bd228aa2B62101C40CC1da978F24"): 50000,  // test token
@@ -28,6 +29,7 @@ var defaultConfig = Config{
 type Config struct {
 	ExplorerUrl string
 	ChannelId   string
+	NativeToken string
 	Thresholds  map[common.Address]float64
 }
 
@@ -35,13 +37,21 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	var cfg struct {
 		ExplorerUrl string
 		ChannelId   string
+		NativeToken string
 		Thresholds  map[string]float64
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return err
 	}
-	c.ExplorerUrl = cfg.ExplorerUrl
-	c.ChannelId = cfg.ChannelId
+	if cfg.ExplorerUrl != "" {
+		c.ExplorerUrl = cfg.ExplorerUrl
+	}
+	if cfg.ChannelId != "" {
+		c.ChannelId = cfg.ChannelId
+	}
+	if cfg.NativeToken != "" {
+		c.NativeToken = cfg.NativeToken
+	}
 	c.Thresholds = make(map[common.Address]float64)
 	for tokenAddr, val := range cfg.Thresholds {
 		if common.IsHexAddress(tokenAddr) {

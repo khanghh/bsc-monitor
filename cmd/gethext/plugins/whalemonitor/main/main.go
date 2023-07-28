@@ -17,12 +17,12 @@ var (
 
 type WhaleMonitorPlugin struct {
 	*handler
-	config Config
-	bot    *WhaleBot
+	bot *WhaleBot
 }
 
 func (p *WhaleMonitorPlugin) OnEnable(ctx *plugin.PluginCtx) error {
-	if err := loadConfig(path.Join(ctx.DataDir, defaultConfigFile), &p.config); err != nil {
+	config := defaultConfig
+	if err := loadConfig(path.Join(ctx.DataDir, defaultConfigFile), &config); err != nil {
 		return err
 	}
 
@@ -33,14 +33,15 @@ func (p *WhaleMonitorPlugin) OnEnable(ctx *plugin.PluginCtx) error {
 	p.handler = &handler{
 		PluginCtx: ctx,
 		client:    client,
+		config:    &config,
 	}
 
-	p.bot, err = NewWhaleBot(&p.config, p.handler)
+	p.bot, err = NewWhaleBot(p.handler)
 	if err != nil {
 		return err
 	}
 
-	ctx.Monitor.AddProcessor(NewTokenTransferMonitor(p.handler, p.config.Thresholds))
+	ctx.Monitor.AddProcessor(NewTokenTransferMonitor(p.handler))
 	return nil
 }
 
@@ -50,7 +51,5 @@ func (p *WhaleMonitorPlugin) OnDisable(ctx *plugin.PluginCtx) error {
 }
 
 func OnLoad(ctx *plugin.PluginCtx) plugin.Plugin {
-	return &WhaleMonitorPlugin{
-		config: defaultConfig,
-	}
+	return &WhaleMonitorPlugin{}
 }

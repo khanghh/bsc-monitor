@@ -30,8 +30,7 @@ var (
 
 type WhaleBot struct {
 	discordbot.DiscordBot
-	config  *Config
-	handler *handler
+	*handler
 	whaleCh chan whalemonitor.WhaleEvent
 	sub     event.Subscription
 }
@@ -43,8 +42,9 @@ func (bot *WhaleBot) Stop() {
 
 func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEvent) *discordgo.MessageSend {
 	title := "Whale Transfer Detected!"
-	var transferMsg strings.Builder
-	var shortTransferMsg strings.Builder
+	var desc strings.Builder
+	desc.WriteString(fmt.Sprintf("**TxHash**\n [%s](%s/tx/%s)\n", event.TxHash, bot.config.ExplorerUrl, event.TxHash))
+	desc.WriteString("\n**Transfers**\n")
 	for idx, transfer := range event.Transfers {
 		var tokenAmount string
 		if transfer.Token != nil {
@@ -52,44 +52,23 @@ func (bot *WhaleBot) renderWhaleTokenTransferMessage(event *whalemonitor.WhaleEv
 			tokenAmount = fmt.Sprintf("%s [%s](%s/address/%s)", amount, transfer.Token.Symbol, bot.config.ExplorerUrl, transfer.Token.Address)
 		} else {
 			amount := AmountString(transfer.Value, 18)
-			tokenAmount = fmt.Sprintf("%s ETH", amount)
+			tokenAmount = fmt.Sprintf("%s %s", amount, bot.config.NativeToken)
 		}
-		transferMsg.WriteString(fmt.Sprintf(
+		desc.WriteString(fmt.Sprintf(
 			"%d. [%s](%s) => [%s](%s): %s\n",
 			idx+1,
 			transfer.From, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.From),
 			transfer.To, fmt.Sprintf("%s/address/%s", bot.config.ExplorerUrl, transfer.To),
 			tokenAmount,
 		))
-		shortTransferMsg.WriteString(fmt.Sprintf(
-			"%d. %s => %s: %s\n",
-			idx+1,
-			transfer.From,
-			transfer.To,
-			tokenAmount,
-		))
-	}
-	transferContent := transferMsg.String()
-	if transferMsg.Len() > 1024 { // discord limit 1024 character
-		transferContent = shortTransferMsg.String()
-	}
-	fields := []*discordgo.MessageEmbedField{
-		{
-			Name:  "TxHash",
-			Value: fmt.Sprintf("[%s](%s/tx/%s)", event.TxHash, bot.config.ExplorerUrl, event.TxHash),
-		},
-		{
-			Name:  "Transfers",
-			Value: transferContent,
-		},
 	}
 	return &discordgo.MessageSend{
 		Embed: &discordgo.MessageEmbed{
-			Title:     title,
-			Type:      "rich",
-			Color:     0x3498db,
-			Fields:    fields,
-			Timestamp: time.Now().Format(time.RFC3339),
+			Title:       title,
+			Description: desc.String(),
+			Type:        "rich",
+			Color:       0x3498db,
+			Timestamp:   time.Now().Format(time.RFC3339),
 		},
 	}
 }
@@ -108,8 +87,8 @@ func (bot *WhaleBot) notifyLoop() {
 			return
 		case event := <-bot.whaleCh:
 			msg := bot.renderWhaleMessage(&event)
-			if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-				log.Error("Could not send discord messaqge", "error", err)
+			if msg != nil {
+				bot.sendChannelMessage(msg)
 			}
 		}
 	}
@@ -132,7 +111,8 @@ func (bot *WhaleBot) registerBotCommands() {
 
 func (bot *WhaleBot) sendChannelMessage(msg *discordgo.MessageSend) error {
 	if err := bot.SendChannelMessage(bot.config.ChannelId, msg); err != nil {
-		log.Error("Could not send discord message", "error", err)
+		msgJson, _ := json.Marshal(msg)
+		log.Error("Could not send discord message", "msg", string(msgJson), "error", err)
 		return err
 	}
 	return nil
@@ -153,16 +133,15 @@ func (bot *WhaleBot) handleReload(ctx *dgc.Ctx) {
 }
 
 func (bot *WhaleBot) handleShowConfig(ctx *dgc.Ctx) {
-	buf, _ := json.MarshalIndent(bot.config, "", " ")
+	buf, _ := json.MarshalIndent(bot.config, "", "  ")
 	msg := &discordgo.MessageSend{
 		Content: fmt.Sprintf("```json\n%s\n```", string(buf)),
 	}
 	bot.sendChannelMessage(msg)
 }
 
-func NewWhaleBot(config *Config, handler *handler) (*WhaleBot, error) {
+func NewWhaleBot(handler *handler) (*WhaleBot, error) {
 	bot := &WhaleBot{
-		config:  config,
 		handler: handler,
 		whaleCh: make(chan whalemonitor.WhaleEvent),
 	}
