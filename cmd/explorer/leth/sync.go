@@ -79,8 +79,8 @@ func (s *chainSyncer) processNewHeads(wg *sync.WaitGroup) {
 	go func() {
 		defer close(headCh)
 		var (
-			notificationSupported bool  = true
-			err                   error = nil
+			notificationSupported bool
+			err                   error
 		)
 		for ; ; time.Sleep(500 * time.Millisecond) {
 			log.Info("Start process new heads event")
