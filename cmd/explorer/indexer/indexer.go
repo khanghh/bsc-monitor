@@ -8,7 +8,9 @@ import (
 type Indexer struct {
 }
 
-func (idx *Indexer) EVMTracer() vm.EVMLogger
+func (idx *Indexer) EVMTracer() vm.EVMLogger {
+	return nil
+}
 
 func New(config *Config, indexDb ethdb.Database) (*Indexer, error) {
 	return nil, nil

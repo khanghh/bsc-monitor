@@ -29,7 +29,7 @@ func (t *CallTracerWithHook) CaptureTxStart(gasLimit uint64) {
 func (t *CallTracerWithHook) CaptureTxEnd(restGas uint64) {
 	t.handler.CaptureTxEnd(restGas)
 	t.hook.OnTxEnd(t.Context, t.txResult, restGas)
-	if int(t.txIndex+1) < t.block.Transactions().Len() {
+	if t.txIndex+1 < t.block.Transactions().Len() {
 		t.txIndex += 1
 	}
 }

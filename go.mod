@@ -19,7 +19,7 @@ require (
 	github.com/deckarep/golang-set v1.8.0
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/docker/docker v20.10.19+incompatible
-	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7
+	github.com/dop251/goja v0.0.0-20230605162241-28ee0ee714f3
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/etcd-io/bbolt v1.3.3 // indirect
 	github.com/fatih/color v1.13.0
@@ -30,7 +30,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/google/gofuzz v1.2.0
-	github.com/google/pprof v0.0.0-20221203041831-ce31453925ec
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/graph-gophers/graphql-go v1.3.0
@@ -79,7 +79,7 @@ require (
 
 require (
 	github.com/bwmarrin/discordgo v0.27.1
-	github.com/khanghh/goja-nodejs v1.0.1
+	github.com/khanghh/goja-nodejs v1.0.2
 	github.com/lus/dgc v1.1.0
 	github.com/tidwall/wal v1.1.7
 	github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4 v1.1.3

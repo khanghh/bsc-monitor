@@ -51,7 +51,7 @@ func AmountString(val *big.Int, decimals uint64) string {
 }
 
 func ParseAmount(val float64, decimals uint64) *big.Int {
-	multiplier := new(big.Float).SetFloat64(float64(val) * math.Pow10(int(decimals)))
+	multiplier := new(big.Float).SetFloat64(val * math.Pow10(int(decimals)))
 	ret, _ := multiplier.Int(new(big.Int))
 	return ret
 }
