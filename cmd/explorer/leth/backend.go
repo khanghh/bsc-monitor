@@ -96,7 +96,7 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 	leth = &LightEthereum{
 		config:          config,
 		chainDb:         chainDb,
-		shutdownTracker: shutdowncheck.NewShutdownTracker(leth.chainDb),
+		shutdownTracker: shutdowncheck.NewShutdownTracker(chainDb),
 	}
 
 	var (
@@ -117,13 +117,13 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 	if err != nil {
 		return nil, err
 	}
-	leth.syncer = NewChainSyncer(leth.odr, leth.blockchain)
 	leth.apiBackend = &LEthAPIBackend{leth}
 	leth.engine = parlia.New(chainConfig, chainDb, leth.apiBackend, genesisHash)
 	leth.blockchain, err = NewLightChain(leth.odr, chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig)
 	if err != nil {
 		return nil, err
 	}
+	leth.syncer = NewChainSyncer(leth.odr, leth.blockchain)
 	log.Info("Initialised block chain configuration", "config", chainConfig)
 	leth.shutdownTracker.MarkStartup()
 	return leth, nil

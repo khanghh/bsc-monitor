@@ -76,7 +76,7 @@ func (lc *LightChain) GetHeadersFrom(number, count uint64) []rlp.RawValue {
 
 // GetBody retrieves a block body (transactions and uncles) from the database by
 // hash, caching it if found.
-func (bc *LightChain) GetBody(hash common.Hash) *types.Body {
+func (lc *LightChain) GetBody(hash common.Hash) *types.Body {
 	panic("not implemented")
 }
 
@@ -97,11 +97,9 @@ func (lc *LightChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	if block, ok := lc.blockCache.Get(hash); ok {
 		return block.(*types.Block)
 	}
+	// Falling back to fetch block by hash
 	block, err := lc.odr.GetBlockByHash(hash)
 	if err != nil {
-		return nil
-	}
-	if block.NumberU64() != number {
 		return nil
 	}
 	lc.blockCache.Add(block.Hash(), block)
@@ -257,8 +255,7 @@ func (lc *LightChain) GasLimit() uint64 {
 
 // Genesis retrieves the chain's genesis block.
 func (lc *LightChain) Genesis() *types.Block {
-	// return lc.genesisBlock
-	panic("not implemented")
+	return lc.genesisBlock
 }
 
 // SubscribeRemovedLogsEvent registers a subscription of RemovedLogsEvent.
