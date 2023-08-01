@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	maxBlockFetch = 128 // Maximum amount of blocks to be fetched per retrieval request
+	maxBlockFetch = 100 // Maximum amount of blocks to be fetched per retrieval request
 )
 
 var (
@@ -106,6 +106,7 @@ func (s *ChainSyncer) syncLoop() {
 		}
 		headBlock := s.chain.CurrentBlock()
 		startNum := headBlock.NumberU64() + 1
+		log.Info("Fetching chain segment from remote", "head", startNum)
 		segment, remoteHeight, err = s.odr.GetChainSegment(startNum, maxBlockFetch)
 		if err != nil {
 			log.Error("Could not fetch chain segment", "head", headBlock.NumberU64(), "count", maxBlockFetch, "error", err)
@@ -116,11 +117,12 @@ func (s *ChainSyncer) syncLoop() {
 				log.Error("Remote return invalid chain segment, possible chain reorged", "head", headBlock.NumberU64(), "remoteHash", segment[0].Hash().Hex())
 				return
 			}
-		}
-		s.syncStatsChainHeight = remoteHeight
-		if err := s.importChain(segment); err != nil {
-			log.Error("Could not import chain segment", "error", err)
-			continue
+			s.syncStatsChainHeight = remoteHeight
+			log.Info("Importing new chain segment", "blocks", len(segment))
+			if err := s.importChain(segment); err != nil {
+				log.Error("Could not import chain segment", "error", err)
+				continue
+			}
 		}
 	}
 }
@@ -129,8 +131,9 @@ func (s *ChainSyncer) Start() error {
 	if atomic.LoadInt32(&s.running) == 1 {
 		return errBusy
 	}
-	log.Error("Block synchronization started")
+	log.Info("Block synchronization started")
 	s.cancelCh = make(chan struct{})
+	s.doneCh = make(chan struct{})
 	headBlock := s.chain.CurrentBlock()
 	s.syncStatsChainOrigin = headBlock.NumberU64()
 	go s.syncLoop()
