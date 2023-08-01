@@ -87,9 +87,9 @@ type LightChain struct {
 
 	// data
 	db    ethdb.Database
+	odr   OdrBackend
 	hc    *core.HeaderChain
 	snaps *snapshot.Tree
-	odr   OdrBackend
 
 	// states
 	currentBlock          atomic.Value // Current head of the block chain
@@ -635,7 +635,7 @@ func (bc *LightChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	return nil
 }
 
-func NewLightChain(ord OdrBackend, db ethdb.Database, cacheConfig *core.CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config) (*LightChain, error) {
+func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config) (*LightChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
@@ -651,6 +651,7 @@ func NewLightChain(ord OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 		chainConfig: chainConfig,
 		cacheConfig: cacheConfig,
 		db:          db,
+		odr:         odr,
 		stateCache: state.NewDatabaseWithConfigAndCache(db, &trie.Config{
 			Cache:     cacheConfig.TrieCleanLimit,
 			Journal:   cacheConfig.TrieCleanJournal,
@@ -663,6 +664,8 @@ func NewLightChain(ord OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 		blockCache:    blockCache,
 		engine:        engine,
 		vmConfig:      vmConfig,
+		quitCh:        make(chan struct{}),
+		chainmu:       syncx.NewClosableMutex(),
 	}
 	lc.forker = core.NewForkChoice(lc, nil)
 	lc.validator = NewBlockValidator(chainConfig, lc, engine)
@@ -673,6 +676,7 @@ func NewLightChain(ord OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 	if err != nil {
 		return nil, err
 	}
+
 	lc.genesisBlock = lc.GetBlockByNumber(0)
 	if lc.genesisBlock == nil {
 		return nil, ErrNoGenesis
@@ -711,6 +715,37 @@ func NewLightChain(ord OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 	}
 	if err := lc.engine.VerifyHeader(lc, lc.CurrentHeader(), true); err != nil {
 		return nil, err
+	}
+
+	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
+	for hash := range core.BadHashes {
+		if header := lc.GetHeaderByHash(hash); header != nil {
+			// get the canonical block corresponding to the offending header's number
+			headerByNumber := lc.GetHeaderByNumber(header.Number.Uint64())
+			// make sure the headerByNumber (if present) is in our current canonical chain
+			if headerByNumber != nil && headerByNumber.Hash() == header.Hash() {
+				log.Error("Found bad hash, rewinding chain", "number", header.Number, "hash", header.ParentHash)
+				if err := lc.SetHead(header.Number.Uint64() - 1); err != nil {
+					return nil, err
+				}
+				log.Error("Chain rewind was successful, resuming normal operation")
+			}
+		}
+	}
+
+	// Load any existing snapshot, regenerating it if loading failed
+	if lc.cacheConfig.SnapshotLimit > 0 {
+		// If the chain was rewound past the snapshot persistent layer (causing
+		// a recovery block number to be persisted to disk), check if we're still
+		// in recovery mode and in that case, don't invalidate the snapshot on a
+		// head mismatch.
+		var recover bool
+		head := lc.CurrentBlock()
+		if layer := rawdb.ReadSnapshotRecoveryNumber(lc.db); layer != nil && *layer > head.NumberU64() {
+			log.Warn("Enabling snapshot recovery", "chainhead", head.NumberU64(), "diskbase", *layer)
+			recover = true
+		}
+		lc.snaps, _ = snapshot.New(lc.db, lc.stateCache.TrieDB(), lc.cacheConfig.SnapshotLimit, int(lc.cacheConfig.TriesInMemory), head.Root(), !lc.cacheConfig.SnapshotWait, true, recover, lc.stateCache.NoTries())
 	}
 	rawdb.WriteSafePointBlockNumber(lc.db, lc.CurrentBlock().NumberU64())
 	return lc, nil
