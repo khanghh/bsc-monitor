@@ -50,8 +50,6 @@ func (p *Parlia) getCurrentValidatorsBeforeLuban(blockHash common.Hash, blockNum
 	}
 
 	var valSet []common.Address
-	if err := p.validatorSetABIBeforeLuban.UnpackIntoInterface(&valSet, method, result.Return()); err != nil {
-		return nil, err
-	}
-	return valSet, nil
+	err = p.validatorSetABIBeforeLuban.UnpackIntoInterface(&valSet, method, result.Return())
+	return valSet, err
 }
