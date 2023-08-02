@@ -169,7 +169,13 @@ func (lc *LightChain) GetTd(hash common.Hash, number uint64) *big.Int {
 
 // HasState checks if state trie is fully present in the database or not.
 func (lc *LightChain) HasState(hash common.Hash) bool {
-	return false
+	if lc.snaps != nil {
+		if s := lc.snaps.Snapshot(hash); s != nil && !s.Verified() {
+			return true
+		}
+	}
+	_, err := lc.stateCache.OpenTrie(hash)
+	return err == nil
 }
 
 // HasBlockAndState checks if a block and associated state trie is fully present
