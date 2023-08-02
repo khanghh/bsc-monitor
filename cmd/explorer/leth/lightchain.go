@@ -252,42 +252,47 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 	block, err := it.next()
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
 		if lc.skipBlock(err, it) {
-			start := time.Now()
-			parent := it.previous()
-			if parent == nil {
-				parent = lc.GetHeader(block.ParentHash(), block.NumberU64()-1)
-			}
-			statedb, err := state.NewWithSharedPool(parent.Root, lc.stateCache, lc.snaps)
-			if err != nil {
-				return it.index, err
-			}
-			lc.updateHighestVerifiedHeader(block.Header())
-			statedb.StartPrefetcher("chain")
-			statedb.SetExpectedStateRoot(block.Root())
-			statedb, receipts, logs, usedGas, err := lc.processor.Process(block, statedb, lc.vmConfig)
-			if err != nil {
-				lc.reportBadBlock(block, receipts, err)
-				return it.index, err
-			}
-			lc.cacheReceipts(block.Hash(), receipts)
-			lc.cacheBlock(block.Hash(), block)
-			proctime := time.Since(start)
-			if proctime > time.Second {
-				log.Warn(fmt.Sprintf("Processing block took %dms", proctime.Milliseconds()), "block", block.NumberU64())
-			}
-			// Write the block to the chain and get the status.
-			err = lc.writeHeadWithState(block, receipts, logs, statedb)
-			if err != nil {
-				return it.index, err
-			}
+			log.Warn("Skipped processing known block", "number", block.Number(), "hash", block.Hash(),
+				"uncles", len(block.Uncles()), "txs", len(block.Transactions()), "gas", block.GasUsed(),
+				"root", block.Root())
 			stats.processed++
-			stats.usedGas += usedGas
-			lc.chainBlockFeed.Send(core.ChainHeadEvent{block})
-			dirty, _ := lc.stateCache.TrieDB().Size()
-			stats.report(chain, it.index, dirty)
+			continue
 		}
+		start := time.Now()
+		parent := it.previous()
+		if parent == nil {
+			parent = lc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+		}
+		statedb, err := state.NewWithSharedPool(parent.Root, lc.stateCache, lc.snaps)
+		if err != nil {
+			return it.index, err
+		}
+		lc.updateHighestVerifiedHeader(block.Header())
+		statedb.StartPrefetcher("chain")
+		statedb.SetExpectedStateRoot(block.Root())
+		statedb, receipts, logs, usedGas, err := lc.processor.Process(block, statedb, lc.vmConfig)
+		if err != nil {
+			lc.reportBadBlock(block, receipts, err)
+			return it.index, err
+		}
+		lc.cacheReceipts(block.Hash(), receipts)
+		lc.cacheBlock(block.Hash(), block)
+		proctime := time.Since(start)
+		if proctime > time.Second {
+			log.Warn(fmt.Sprintf("Processing block took %dms", proctime.Milliseconds()), "block", block.NumberU64())
+		}
+		// Write the block to the chain and get the status.
+		err = lc.writeHeadWithState(block, receipts, logs, statedb)
+		if err != nil {
+			return it.index, err
+		}
+		stats.processed++
+		stats.usedGas += usedGas
+		lc.chainBlockFeed.Send(core.ChainHeadEvent{block})
+		dirty, _ := lc.stateCache.TrieDB().Size()
+		stats.report(chain, it.index, dirty)
 	}
-	return it.index, nil
+	return it.index, err
 }
 
 func (lc *LightChain) cacheReceipts(hash common.Hash, receipts types.Receipts) {
@@ -687,6 +692,7 @@ func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 
 	var nilHeader *types.Header
 	lc.highestVerifiedHeader.Store(nilHeader)
+
 	if err := lc.loadLastState(); err != nil {
 		return nil, err
 	}
@@ -713,9 +719,8 @@ func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 			}
 		}
 	}
-	if err := lc.engine.VerifyHeader(lc, lc.CurrentHeader(), true); err != nil {
-		return nil, err
-	}
+
+	lc.engine.VerifyHeader(lc, lc.CurrentHeader(), true)
 
 	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
 	for hash := range core.BadHashes {
