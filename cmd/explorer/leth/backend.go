@@ -17,14 +17,14 @@ import (
 type LightEthereum struct {
 	config *Config
 
-	chainDb    ethdb.Database
-	blockchain *LightChain
-	txpool     *core.TxPool
-	engine     consensus.Engine
+	chainDb ethdb.Database
+	chain   *LightChain
+	txpool  *core.TxPool
+	engine  consensus.Engine
 
 	odr        *RpcOdr
 	syncer     *ChainSyncer
-	apiBackend ethapi.Backend
+	apiBackend *LEthAPIBackend
 
 	shutdownTracker *shutdowncheck.ShutdownTracker
 }
@@ -74,7 +74,7 @@ func (leth *LightEthereum) Start() error {
 
 func (leth *LightEthereum) Stop() error {
 	leth.syncer.Stop()
-	leth.blockchain.Stop()
+	leth.chain.Stop()
 	leth.engine.Close()
 
 	// Clean shutdown marker as the last thing before closing db
@@ -118,12 +118,12 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 		return nil, err
 	}
 	leth.apiBackend = &LEthAPIBackend{leth}
-	leth.engine = parlia.New(chainConfig, chainDb, leth.apiBackend, genesisHash)
-	leth.blockchain, err = NewLightChain(leth.odr, chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig)
+	leth.engine = parlia.New(chainConfig, chainDb, &EthCallAPI{leth.apiBackend}, genesisHash)
+	leth.chain, err = NewLightChain(leth.odr, chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig)
 	if err != nil {
 		return nil, err
 	}
-	leth.syncer = NewChainSyncer(leth.odr, leth.blockchain)
+	leth.syncer = NewChainSyncer(leth.odr, leth.chain)
 	log.Info("Initialised block chain configuration", "config", chainConfig)
 	leth.shutdownTracker.MarkStartup()
 	return leth, nil

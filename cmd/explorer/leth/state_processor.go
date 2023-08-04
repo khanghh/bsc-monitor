@@ -29,7 +29,7 @@ const (
 // LightProcessor implements Processor.
 type LightProcessor struct {
 	config *params.ChainConfig // Chain configuration options
-	bc     *LightChain         // Canonical block chain
+	lc     *LightChain         // Canonical block chain
 	engine consensus.Engine    // Consensus engine used for block rewards
 }
 
@@ -37,7 +37,7 @@ type LightProcessor struct {
 func NewLightProcessor(config *params.ChainConfig, bc *LightChain, engine consensus.Engine) *LightProcessor {
 	return &LightProcessor{
 		config: config,
-		bc:     bc,
+		lc:     bc,
 		engine: engine,
 	}
 }
@@ -67,7 +67,7 @@ func (p *LightProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Handle upgrade build-in system contract code
 	systemcontracts.UpgradeBuildInSystemContract(p.config, block.Number(), statedb)
 
-	blockContext := core.NewEVMBlockContext(header, p.bc, nil)
+	blockContext := core.NewEVMBlockContext(header, p.lc, nil)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 
 	txNum := len(block.Transactions())
@@ -101,7 +101,7 @@ func (p *LightProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		statedb.Prepare(tx.Hash(), i)
 
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
+		receipt, err := applyTransaction(msg, p.config, p.lc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
@@ -112,7 +112,7 @@ func (p *LightProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	bloomProcessors.Close()
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
+	err := p.engine.Finalize(p.lc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas)
 	if err != nil {
 		return statedb, receipts, allLogs, *usedGas, err
 	}

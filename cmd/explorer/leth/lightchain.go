@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -85,14 +86,13 @@ type LightChain struct {
 	cacheConfig *core.CacheConfig   // Cache configuration for pruning
 	vmConfig    vm.Config
 
-	// data
-	db    ethdb.Database
-	odr   OdrBackend
-	hc    *core.HeaderChain
-	snaps *snapshot.Tree
+	// chaindata
+	db  ethdb.Database
+	odr OdrBackend
+	hc  *core.HeaderChain
 
-	// states
-	currentBlock          atomic.Value // Current head of the block chain
+	// working status
+	currentBlock          atomic.Value
 	highestVerifiedHeader atomic.Value
 	genesisBlock          *types.Block
 
@@ -110,6 +110,11 @@ type LightChain struct {
 	forker    *core.ForkChoice
 	chainmu   *syncx.ClosableMutex
 
+	// statedb processing
+	snaps      *snapshot.Tree
+	triegc     *prque.Prque // Priority queue mapping block numbers to tries to gc
+	commitLock sync.Mutex
+
 	// feeds
 	rmLogsFeed          event.Feed
 	chainFeed           event.Feed
@@ -121,6 +126,7 @@ type LightChain struct {
 	finalizedHeaderFeed event.Feed
 	scope               event.SubscriptionScope
 
+	// run/stop control
 	quitCh        chan struct{}  // blockchain quit channel
 	wg            sync.WaitGroup // chain processing wait group for shutting down
 	running       int32          // 0 if chain is running, 1 when stopped
@@ -233,12 +239,144 @@ Error: %v
 `, lc.chainConfig, block.Number(), block.Hash(), receiptString, err))
 }
 
-func (lc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB) error {
+func (bc *LightChain) tryRewindBadBlocks() {
+	if !bc.chainmu.TryLock() {
+		return
+	}
+	defer bc.chainmu.Unlock()
+	block := bc.CurrentBlock()
+	snaps := bc.snaps
+	// Verified and Result is false
+	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
+		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitAndGetVerifyRes() {
+		// Rewind by one block
+		log.Warn("current block verified failed, rewind to its parent", "height", block.NumberU64(), "hash", block.Hash())
+		// bc.badBlockCache.Add(block.Hash(), time.Now())
+		// bc.diffLayerCache.Remove(block.Hash())
+		// bc.diffLayerRLPCache.Remove(block.Hash())
+		bc.reportBadBlock(block, nil, errStateRootVerificationFailed)
+		bc.setHeadBeyondRoot(block.NumberU64()-1, common.Hash{}, false)
+	}
+}
+
+// writeBlockWithState writes block, metadata and corresponding state data to the database.
+func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, setHead, emitHeadEvent bool, state *state.StateDB) error {
+	// Calculate the total difficulty of the block
+	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+	if ptd == nil {
+		state.StopPrefetcher()
+		return consensus.ErrUnknownAncestor
+	}
+	// Make sure no inconsistent state is leaked during insertion
+	externTd := new(big.Int).Add(block.Difficulty(), ptd)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		blockBatch := bc.db.NewBatch()
+		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
+		rawdb.WriteHeader(blockBatch, block.Header())
+		rawdb.WritePreimages(blockBatch, state.Preimages())
+		if err := blockBatch.Write(); err != nil {
+			log.Crit("Failed to write block into disk", "err", err)
+		}
+		wg.Done()
+	}()
+
+	tryCommitTrieDB := func() error {
+		bc.commitLock.Lock()
+		defer bc.commitLock.Unlock()
+
+		triedb := bc.stateCache.TrieDB()
+		// Full but not archive node, do proper garbage collection
+		triedb.Reference(block.Root(), common.Hash{}) // metadata reference to keep trie alive
+		bc.triegc.Push(block.Root(), -int64(block.NumberU64()))
+
+		if current := block.NumberU64(); current > bc.cacheConfig.TriesInMemory {
+			// If we exceeded our memory allowance, flush matured singleton nodes to disk
+			var (
+				nodes, imgs = triedb.Size()
+				limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+			)
+			if nodes > limit || imgs > 4*1024*1024 {
+				triedb.Cap(limit - ethdb.IdealBatchSize)
+			}
+			// Garbage collect anything below our required write retention
+			chosen := current - bc.cacheConfig.TriesInMemory
+			wg2 := sync.WaitGroup{}
+			for !bc.triegc.Empty() {
+				root, number := bc.triegc.Pop()
+				if uint64(-number) > chosen {
+					bc.triegc.Push(root, number)
+					break
+				}
+				wg2.Add(1)
+				go func() {
+					triedb.Dereference(root.(common.Hash))
+					wg2.Done()
+				}()
+			}
+			wg2.Wait()
+		}
+		return nil
+	}
+
+	// Commit all cached state changes into underlying memory database.
+	state.LightCommit()
+	_, _, err := state.Commit(bc.tryRewindBadBlocks, tryCommitTrieDB)
+	if err != nil {
+		return err
+	}
+	wg.Wait()
+
+	// check if set chain head or not
+	if !setHead {
+		return nil
+	}
+	// TODO(khanghh): check if chain reorg before updating chain head block
+	bc.writeHeadBlock(block)
+	bc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash(), Logs: logs})
+	if len(logs) > 0 {
+		bc.logsFeed.Send(logs)
+	}
+	// In theory we should fire a ChainHeadEvent when we inject
+	// a canonical block, but sometimes we can insert a batch of
+	// canonicial blocks. Avoid firing too many ChainHeadEvents,
+	// we will fire an accumulated ChainHeadEvent and disable fire
+	// event here.
+	if emitHeadEvent {
+		bc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
+		if posa, ok := bc.Engine().(consensus.PoSA); ok {
+			if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
+				bc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: finalizedHeader})
+			}
+		}
+	}
 	return nil
 }
 
 func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool) (int, error) {
-	stats := insertStats{startTime: mclock.Now()}
+	// If the chain is terminating, don't even bother starting up.
+	if lc.insertStopped() {
+		return 0, nil
+	}
+
+	var (
+		stats     = insertStats{startTime: mclock.Now()}
+		lastCanon *types.Block
+	)
+	// Fire a single chain head event if we've progressed the chain
+	defer func() {
+		if lastCanon != nil && lc.CurrentBlock().Hash() == lastCanon.Hash() {
+			lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: lastCanon})
+			if posa, ok := lc.Engine().(consensus.PoSA); ok {
+				if finalizedHeader := posa.GetFinalizedHeader(lc, lastCanon.Header()); finalizedHeader != nil {
+					lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: finalizedHeader})
+				}
+			}
+		}
+	}()
+
 	headers := make([]*types.Header, len(chain))
 	seals := make([]bool, len(chain))
 
@@ -248,9 +386,31 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 	}
 	abort, results := lc.engine.VerifyHeaders(lc, headers, seals)
 	defer close(abort)
+
 	it := newInsertIterator(chain, results, lc.validator)
 	block, err := it.next()
+
+	// Checking first block
+	switch {
+	case errors.Is(err, consensus.ErrPrunedAncestor):
+		log.Debug("Pruned ancestor", "number", block.Number(), "hash", block.Hash())
+		return it.index, err
+	case errors.Is(err, consensus.ErrUnknownAncestor):
+		stats.queued += it.processed()
+		stats.ignored += it.remaining()
+		return it.index, err
+	case err != nil && !errors.Is(err, ErrKnownBlock):
+		lc.reportBadBlock(block, nil, err)
+		return it.index, err
+	}
+
+	// First block ok, continue to inserting the chain segment
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
+		// If the chain is terminating, stop processing blocks
+		if lc.insertStopped() {
+			log.Debug("Abort during block processing")
+			break
+		}
 		if lc.skipBlock(err, it) {
 			log.Warn("Skipped processing known block", "number", block.Number(), "hash", block.Hash(),
 				"uncles", len(block.Uncles()), "txs", len(block.Transactions()), "gas", block.GasUsed(),
@@ -275,6 +435,8 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			lc.reportBadBlock(block, receipts, err)
 			return it.index, err
 		}
+		rootHash := statedb.IntermediateRoot(false)
+		log.Debug("insertChain", "block", block.Hash().Hex(), "number", block.NumberU64(), "root", rootHash.Hex())
 		lc.cacheReceipts(block.Hash(), receipts)
 		lc.cacheBlock(block.Hash(), block)
 		proctime := time.Since(start)
@@ -282,13 +444,13 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			log.Warn(fmt.Sprintf("Processing block took %dms", proctime.Milliseconds()), "block", block.NumberU64())
 		}
 		// Write the block to the chain and get the status.
-		err = lc.writeHeadWithState(block, receipts, logs, statedb)
+		err = lc.writeHeadWithState(block, receipts, logs, true, true, statedb)
 		if err != nil {
 			return it.index, err
 		}
 		stats.processed++
 		stats.usedGas += usedGas
-		lc.chainBlockFeed.Send(core.ChainHeadEvent{block})
+		lc.chainBlockFeed.Send(core.ChainHeadEvent{Block: block})
 		dirty, _ := lc.stateCache.TrieDB().Size()
 		stats.report(chain, it.index, dirty)
 	}
@@ -323,7 +485,6 @@ func (bc *LightChain) writeHeadBlock(block *types.Block) {
 	// Add the block to the canonical chain number scheme and mark as the head
 	batch := bc.db.NewBatch()
 	rawdb.WriteHeadHeaderHash(batch, block.Hash())
-	rawdb.WriteHeadFastBlockHash(batch, block.Hash())
 	rawdb.WriteCanonicalHash(batch, block.Hash(), block.NumberU64())
 	rawdb.WriteTxLookupEntriesByBlock(batch, block)
 	rawdb.WriteHeadBlockHash(batch, block.Hash())
@@ -506,7 +667,12 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 }
 
 func (bc *LightChain) SetHead(head uint64) error {
-	return nil
+	if !bc.chainmu.TryLock() {
+		return nil
+	}
+	defer bc.chainmu.Unlock()
+	_, err := bc.setHeadBeyondRoot(head, common.Hash{}, false)
+	return err
 }
 
 func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (int, error) {
@@ -524,6 +690,10 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 	defer lc.chainmu.Unlock()
 	_, err := lc.hc.InsertHeaderChain(chain, start, lc.forker)
 	return 0, err
+}
+
+func (lc *LightChain) StopInsert() {
+	atomic.StoreInt32(&lc.procInterrupt, 1)
 }
 
 // InsertChain attempts to process chain segment and insert its headers to the canonical
@@ -568,7 +738,7 @@ func (bc *LightChain) Stop() {
 
 	// Signal shutdown to all goroutines.
 	close(bc.quitCh)
-	// bc.StopInsert()
+	bc.StopInsert()
 
 	// Now wait for all chain modifications to end and persistent goroutines to exit.
 	//
@@ -586,7 +756,6 @@ func (bc *LightChain) Stop() {
 	}
 
 	triedb := bc.stateCache.TrieDB()
-
 	log.Info("Writing snapshot state to disk", "root", snapBase)
 	if err := triedb.Commit(snapBase, true, nil); err != nil {
 		log.Error("Failed to commit recent state trie", "err", err)
@@ -657,6 +826,7 @@ func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 		cacheConfig: cacheConfig,
 		db:          db,
 		odr:         odr,
+		triegc:      prque.New(nil),
 		stateCache: state.NewDatabaseWithConfigAndCache(db, &trie.Config{
 			Cache:     cacheConfig.TrieCleanLimit,
 			Journal:   cacheConfig.TrieCleanJournal,
