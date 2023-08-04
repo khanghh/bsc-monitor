@@ -160,6 +160,9 @@ var (
 // backing account.
 type SignerFn func(accounts.Account, string, []byte) ([]byte, error)
 type SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
+type EthCallAPI interface {
+	Call(ctx context.Context, args ethapi.TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *ethapi.StateOverride) (hexutil.Bytes, error)
+}
 
 func isToSystemContract(to common.Address) bool {
 	return systemContracts[to]
@@ -221,7 +224,7 @@ type Parlia struct {
 
 	lock sync.RWMutex // Protects the signer fields
 
-	ethAPI                     ethapi.Backend
+	ethAPI                     EthCallAPI
 	VotePool                   consensus.VotePool
 	validatorSetABIBeforeLuban abi.ABI
 	validatorSetABI            abi.ABI
@@ -235,7 +238,7 @@ type Parlia struct {
 func New(
 	chainConfig *params.ChainConfig,
 	db ethdb.Database,
-	ethAPI ethapi.Backend,
+	callAPI EthCallAPI,
 	genesisHash common.Hash,
 ) *Parlia {
 	// get parlia config
@@ -272,7 +275,7 @@ func New(
 		config:                     parliaConfig,
 		genesisHash:                genesisHash,
 		db:                         db,
-		ethAPI:                     ethAPI,
+		ethAPI:                     callAPI,
 		recentSnaps:                recentSnaps,
 		signatures:                 signatures,
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
@@ -1487,6 +1490,9 @@ func (p *Parlia) Close() error {
 
 // getCurrentValidators get current validators
 func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) ([]common.Address, map[common.Address]*types.BLSPublicKey, error) {
+	// block
+	blockNr := rpc.BlockNumberOrHashWithHash(blockHash, false)
+
 	if !p.chainConfig.IsLuban(blockNum) {
 		validators, err := p.getCurrentValidatorsBeforeLuban(blockHash, blockNum)
 		return validators, nil, err
@@ -1504,19 +1510,14 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 		return nil, nil, err
 	}
 	// call
-	header := p.ethAPI.Chain().GetHeader(blockHash, blockNum.Uint64())
-	state, err := p.ethAPI.Chain().StateAt(header.Root)
-	if err != nil {
-		return nil, nil, err
-	}
 	msgData := (hexutil.Bytes)(data)
 	toAddress := common.HexToAddress(systemcontracts.ValidatorContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-	result, err := p.doCall(ctx, state, header, ethapi.TransactionArgs{
+	result, err := p.ethAPI.Call(ctx, ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
-	})
+	}, blockNr, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1524,7 +1525,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	var valSet []common.Address
 	var voteAddrSet []types.BLSPublicKey
 
-	if err := p.validatorSetABI.UnpackIntoInterface(&[]interface{}{&valSet, &voteAddrSet}, method, result.Return()); err != nil {
+	if err := p.validatorSetABI.UnpackIntoInterface(&[]interface{}{&valSet, &voteAddrSet}, method, result); err != nil {
 		return nil, nil, err
 	}
 
