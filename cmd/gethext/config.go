@@ -60,7 +60,6 @@ var (
 	configFileFlag = cli.StringFlag{
 		Name:  "config",
 		Usage: "TOML configuration file",
-		Value: "config.toml",
 	}
 )
 

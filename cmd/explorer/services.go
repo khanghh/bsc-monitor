@@ -20,6 +20,7 @@ func registerLightEthereum(stack *service.ServiceStack, config *leth.Config) (*l
 	leth, err := leth.New(config, chaindb)
 	if err != nil {
 		log.Error("Failed to initialize Light Ethereum backend", "error", err)
+		return nil, err
 	}
 	stack.RegisterLifeCycle(leth)
 	stack.RegisterAPIs(leth.APIs())

@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -37,7 +38,8 @@ import (
 // Snapshot is the state of the validatorSet at a given point.
 type Snapshot struct {
 	config   *params.ParliaConfig // Consensus engine parameters to fine tune behavior
-	sigCache *lru.ARCCache        // Cache of recent block signatures to speed up ecrecover
+	ethAPI   *ethapi.PublicBlockChainAPI
+	sigCache *lru.ARCCache // Cache of recent block signatures to speed up ecrecover
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
@@ -129,6 +131,7 @@ func (s *Snapshot) store(db ethdb.Database) error {
 func (s *Snapshot) copy() *Snapshot {
 	cpy := &Snapshot{
 		config:           s.config,
+		ethAPI:           s.ethAPI,
 		sigCache:         s.sigCache,
 		Number:           s.Number,
 		Hash:             s.Hash,
