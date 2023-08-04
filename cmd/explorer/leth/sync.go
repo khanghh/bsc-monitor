@@ -106,7 +106,7 @@ func (s *ChainSyncer) syncLoop() {
 		}
 		headBlock := s.chain.CurrentBlock()
 		startNum := headBlock.NumberU64() + 1
-		log.Info("Fetching chain segment from remote", "head", startNum)
+		log.Debug("Fetching chain segment from remote", "head", startNum)
 		segment, remoteHeight, err = s.odr.GetChainSegment(startNum, maxBlockFetch)
 		if err != nil {
 			log.Error("Could not fetch chain segment", "head", headBlock.NumberU64(), "count", maxBlockFetch, "error", err)
@@ -118,7 +118,8 @@ func (s *ChainSyncer) syncLoop() {
 				return
 			}
 			s.syncStatsChainHeight = remoteHeight
-			log.Info("Importing new chain segment", "blocks", len(segment))
+			blockRange := []uint64{segment[0].NumberU64(), segment[len(segment)-1].NumberU64()}
+			log.Debug("Importing new chain segment", "blocks", len(segment), "segment", blockRange)
 			if err := s.importChain(segment); err != nil {
 				log.Error("Could not import chain segment", "error", err)
 				continue

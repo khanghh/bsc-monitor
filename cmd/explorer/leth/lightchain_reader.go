@@ -88,7 +88,8 @@ func (lc *LightChain) GetBodyRLP(hash common.Hash) rlp.RawValue {
 
 // HasBlock checks if a block is fully present in the blockchain or not
 func (lc *LightChain) HasBlock(hash common.Hash, number uint64) bool {
-	return false
+	block := lc.GetBlock(hash, number)
+	return block != nil
 }
 
 // GetBlock retrieves a block from the database by hash and number,
@@ -181,12 +182,11 @@ func (lc *LightChain) HasState(hash common.Hash) bool {
 // HasBlockAndState checks if a block and associated state trie is fully present
 // in the database or not, caching it if present.
 func (lc *LightChain) HasBlockAndState(hash common.Hash, number uint64) bool {
-	// Check first that the block itself is known
-	block := lc.GetBlock(hash, number)
-	if block == nil {
+	header := lc.hc.GetHeader(hash, number)
+	if header == nil {
 		return false
 	}
-	return lc.HasState(block.Root())
+	return lc.HasState(header.Root)
 }
 
 // TrieNode retrieves a blob of data associated with a trie node
@@ -220,7 +220,7 @@ func (lc *LightChain) State() (*state.StateDB, error) {
 
 // StateAt returns a new mutable state based on a particular point in time.
 func (lc *LightChain) StateAt(root common.Hash) (*state.StateDB, error) {
-	return nil, nil
+	return state.New(root, lc.stateCache, lc.snaps)
 }
 
 // Config retrieves the chain's fork configuration.

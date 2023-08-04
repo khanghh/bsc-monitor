@@ -29,6 +29,8 @@ var (
 
 	// ErrKnownBadBlock is return when the block is a known bad block
 	ErrKnownBadBlock = errors.New("already known bad block")
+
+	errStateRootVerificationFailed = errors.New("state root verification failed")
 )
 
 // List of evm-call-message pre-checking errors. All state transition messages will
