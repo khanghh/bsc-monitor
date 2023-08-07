@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	rpcTimeout = time.Duration(10 * time.Second)
+	rpcTimeout = 10 * time.Second
 )
 
 // OdrBackend is Off-chain Data Retrieval backend for LightEthereum
