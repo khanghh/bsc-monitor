@@ -322,7 +322,6 @@ func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.R
 	}
 
 	// Commit all cached state changes into underlying memory database.
-	state.LightCommit()
 	_, _, err := state.Commit(bc.tryRewindBadBlocks, tryCommitTrieDB)
 	if err != nil {
 		return err
@@ -435,8 +434,8 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			lc.reportBadBlock(block, receipts, err)
 			return it.index, err
 		}
-		rootHash := statedb.IntermediateRoot(false)
-		log.Debug("insertChain", "block", block.Hash().Hex(), "number", block.NumberU64(), "root", rootHash.Hex())
+		rootHash := statedb.IntermediateRoot(true)
+		log.Debug("Processed block", "block", block.Hash().Hex(), "number", block.NumberU64(), "root", rootHash.Hex())
 		lc.cacheReceipts(block.Hash(), receipts)
 		lc.cacheBlock(block.Hash(), block)
 		proctime := time.Since(start)
@@ -749,20 +748,27 @@ func (bc *LightChain) Stop() {
 	bc.chainmu.Close()
 	bc.wg.Wait()
 
-	// Ensure that the entirety of the state snapshot is journalled to disk.
+	// Writing current state to disk
+	triedb := bc.stateCache.TrieDB()
+	headBlock := bc.CurrentBlock()
+	log.Info("Writing cached state to disk", "block", headBlock.Number(), "hash", headBlock.Hash(), "root", headBlock.Root())
+	if err := triedb.Commit(headBlock.Root(), true, nil); err != nil {
+		log.Error("Failed to commit recent state trie", "err", err)
+	}
+
+	// Writing snapshot state to disk
 	snapBase, err := bc.snaps.Journal(bc.CurrentBlock().Root())
 	if err != nil {
 		log.Error("Failed to journal state snapshot", "err", err)
 	}
-
-	triedb := bc.stateCache.TrieDB()
 	log.Info("Writing snapshot state to disk", "root", snapBase)
 	if err := triedb.Commit(snapBase, true, nil); err != nil {
 		log.Error("Failed to commit recent state trie", "err", err)
-	} else {
-		rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().NumberU64())
 	}
 
+	for !bc.triegc.Empty() {
+		go triedb.Dereference(bc.triegc.PopItem().(common.Hash))
+	}
 	if size, _ := triedb.Size(); size != 0 {
 		log.Error("Dangling trie nodes after full cleanup")
 	}
