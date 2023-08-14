@@ -90,7 +90,7 @@ func (s *ChainSyncer) syncLoop() {
 	defer func() {
 		close(s.doneCh)
 		atomic.StoreInt32(&s.running, 0)
-		log.Error("Block synchronization stopped")
+		log.Info("Block synchronization stopped")
 	}()
 
 	var (

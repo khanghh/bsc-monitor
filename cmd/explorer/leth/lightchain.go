@@ -239,13 +239,13 @@ Error: %v
 `, lc.chainConfig, block.Number(), block.Hash(), receiptString, err))
 }
 
-func (bc *LightChain) tryRewindBadBlocks() {
-	if !bc.chainmu.TryLock() {
+func (lc *LightChain) tryRewindBadBlocks() {
+	if !lc.chainmu.TryLock() {
 		return
 	}
-	defer bc.chainmu.Unlock()
-	block := bc.CurrentBlock()
-	snaps := bc.snaps
+	defer lc.chainmu.Unlock()
+	block := lc.CurrentBlock()
+	snaps := lc.snaps
 	// Verified and Result is false
 	if snaps != nil && snaps.Snapshot(block.Root()) != nil &&
 		snaps.Snapshot(block.Root()).Verified() && !snaps.Snapshot(block.Root()).WaitAndGetVerifyRes() {
@@ -254,15 +254,15 @@ func (bc *LightChain) tryRewindBadBlocks() {
 		// bc.badBlockCache.Add(block.Hash(), time.Now())
 		// bc.diffLayerCache.Remove(block.Hash())
 		// bc.diffLayerRLPCache.Remove(block.Hash())
-		bc.reportBadBlock(block, nil, errStateRootVerificationFailed)
-		bc.setHeadBeyondRoot(block.NumberU64()-1, common.Hash{}, false)
+		lc.reportBadBlock(block, nil, errStateRootVerificationFailed)
+		lc.setHeadBeyondRoot(block.NumberU64()-1, common.Hash{}, false)
 	}
 }
 
 // writeBlockWithState writes block, metadata and corresponding state data to the database.
-func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, setHead, emitHeadEvent bool, state *state.StateDB) error {
+func (lc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, setHead, emitHeadEvent bool, state *state.StateDB) error {
 	// Calculate the total difficulty of the block
-	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+	ptd := lc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
 		state.StopPrefetcher()
 		return consensus.ErrUnknownAncestor
@@ -273,7 +273,7 @@ func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.R
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		blockBatch := bc.db.NewBatch()
+		blockBatch := lc.db.NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteHeader(blockBatch, block.Header())
 		rawdb.WritePreimages(blockBatch, state.Preimages())
@@ -284,45 +284,42 @@ func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.R
 	}()
 
 	tryCommitTrieDB := func() error {
-		bc.commitLock.Lock()
-		defer bc.commitLock.Unlock()
+		lc.commitLock.Lock()
+		defer lc.commitLock.Unlock()
 
-		triedb := bc.stateCache.TrieDB()
+		triedb := lc.stateCache.TrieDB()
 		// Full but not archive node, do proper garbage collection
 		triedb.Reference(block.Root(), common.Hash{}) // metadata reference to keep trie alive
-		bc.triegc.Push(block.Root(), -int64(block.NumberU64()))
+		lc.triegc.Push(block.Root(), -int64(block.NumberU64()))
+		current := block.NumberU64()
+		if current < lc.cacheConfig.TriesInMemory {
+			return nil
+		}
 
-		if current := block.NumberU64(); current > bc.cacheConfig.TriesInMemory {
-			// If we exceeded our memory allowance, flush matured singleton nodes to disk
-			var (
-				nodes, imgs = triedb.Size()
-				limit       = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
-			)
-			if nodes > limit || imgs > 4*1024*1024 {
-				triedb.Cap(limit - ethdb.IdealBatchSize)
+		// If we exceeded our memory allowance, flush matured singleton nodes to disk
+		var (
+			nodes, imgs = triedb.Size()
+			limit       = common.StorageSize(lc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+		)
+		if nodes > limit || imgs > 4*1024*1024 {
+			triedb.Cap(limit - ethdb.IdealBatchSize)
+		}
+		// Garbage collect anything below our required write retention
+		chosen := current - lc.cacheConfig.TriesInMemory
+		// Garbage collect anything below our required write retention
+		for !lc.triegc.Empty() {
+			root, number := lc.triegc.Pop()
+			if uint64(-number) > chosen {
+				lc.triegc.Push(root, number)
+				break
 			}
-			// Garbage collect anything below our required write retention
-			chosen := current - bc.cacheConfig.TriesInMemory
-			wg2 := sync.WaitGroup{}
-			for !bc.triegc.Empty() {
-				root, number := bc.triegc.Pop()
-				if uint64(-number) > chosen {
-					bc.triegc.Push(root, number)
-					break
-				}
-				wg2.Add(1)
-				go func() {
-					triedb.Dereference(root.(common.Hash))
-					wg2.Done()
-				}()
-			}
-			wg2.Wait()
+			triedb.Dereference(root.(common.Hash))
 		}
 		return nil
 	}
 
 	// Commit all cached state changes into underlying memory database.
-	_, _, err := state.Commit(bc.tryRewindBadBlocks, tryCommitTrieDB)
+	_, _, err := state.Commit(lc.tryRewindBadBlocks, tryCommitTrieDB)
 	if err != nil {
 		return err
 	}
@@ -333,10 +330,10 @@ func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.R
 		return nil
 	}
 	// TODO(khanghh): check if chain reorg before updating chain head block
-	bc.writeHeadBlock(block)
-	bc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash(), Logs: logs})
+	lc.writeHeadBlock(block)
+	lc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash(), Logs: logs})
 	if len(logs) > 0 {
-		bc.logsFeed.Send(logs)
+		lc.logsFeed.Send(logs)
 	}
 	// In theory we should fire a ChainHeadEvent when we inject
 	// a canonical block, but sometimes we can insert a batch of
@@ -344,10 +341,10 @@ func (bc *LightChain) writeHeadWithState(block *types.Block, receipts []*types.R
 	// we will fire an accumulated ChainHeadEvent and disable fire
 	// event here.
 	if emitHeadEvent {
-		bc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
-		if posa, ok := bc.Engine().(consensus.PoSA); ok {
-			if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
-				bc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: finalizedHeader})
+		lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
+		if posa, ok := lc.Engine().(consensus.PoSA); ok {
+			if finalizedHeader := posa.GetFinalizedHeader(lc, block.Header()); finalizedHeader != nil {
+				lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: finalizedHeader})
 			}
 		}
 	}
@@ -480,9 +477,9 @@ func (lc *LightChain) cacheBlock(hash common.Hash, block *types.Block) {
 // or if they are on a different side chain.
 //
 // Note, this function assumes that the `mu` mutex is held!
-func (bc *LightChain) writeHeadBlock(block *types.Block) {
+func (lc *LightChain) writeHeadBlock(block *types.Block) {
 	// Add the block to the canonical chain number scheme and mark as the head
-	batch := bc.db.NewBatch()
+	batch := lc.db.NewBatch()
 	rawdb.WriteHeadHeaderHash(batch, block.Hash())
 	rawdb.WriteCanonicalHash(batch, block.Hash(), block.NumberU64())
 	rawdb.WriteTxLookupEntriesByBlock(batch, block)
@@ -493,65 +490,65 @@ func (bc *LightChain) writeHeadBlock(block *types.Block) {
 		log.Crit("Failed to update chain indexes and markers", "err", err)
 	}
 	// Update all in-memory chain markers in the last step
-	bc.hc.SetCurrentHeader(block.Header())
-	bc.currentBlock.Store(block)
+	lc.hc.SetCurrentHeader(block.Header())
+	lc.currentBlock.Store(block)
 }
 
 // loadLastState loads the last known chain state from the database. This method
 // assumes that the chain manager mutex is held.
-func (bc *LightChain) loadLastState() error {
+func (lc *LightChain) loadLastState() error {
 	// Restore the last known head block
-	head := rawdb.ReadHeadBlockHash(bc.db)
+	head := rawdb.ReadHeadBlockHash(lc.db)
 	if head == (common.Hash{}) {
 		// Corrupt or empty database, init from scratch
 		log.Warn("Empty database, resetting chain")
-		return bc.Reset()
+		return lc.Reset()
 	}
 	// Make sure the entire head block is available
-	currentBlock := bc.GetBlockByHash(head)
+	currentBlock := lc.GetBlockByHash(head)
 	if currentBlock == nil {
 		// Corrupt or empty database, init from scratch
 		log.Warn("Head block missing, resetting chain", "hash", head)
-		return bc.Reset()
+		return lc.Reset()
 	}
 
 	// Everything seems to be fine, set as the head block
-	bc.currentBlock.Store(currentBlock)
+	lc.currentBlock.Store(currentBlock)
 
 	// Restore the last known head header
 	currentHeader := currentBlock.Header()
-	if head := rawdb.ReadHeadHeaderHash(bc.db); head != (common.Hash{}) {
-		if header := bc.GetHeaderByHash(head); header != nil {
+	if head := rawdb.ReadHeadHeaderHash(lc.db); head != (common.Hash{}) {
+		if header := lc.GetHeaderByHash(head); header != nil {
 			currentHeader = header
 		}
 	}
-	bc.hc.SetCurrentHeader(currentHeader)
-	headerTd := bc.GetTd(currentHeader.Hash(), currentHeader.Number.Uint64())
-	blockTd := bc.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
+	lc.hc.SetCurrentHeader(currentHeader)
+	headerTd := lc.GetTd(currentHeader.Hash(), currentHeader.Number.Uint64())
+	blockTd := lc.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
 	log.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "td", headerTd, "age", common.PrettyAge(time.Unix(int64(currentHeader.Time), 0)))
 	log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "td", blockTd, "age", common.PrettyAge(time.Unix(int64(currentBlock.Time()), 0)))
 	return nil
 }
 
-func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bool) (uint64, error) {
+func (lc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bool) (uint64, error) {
 	// Track the block number of the requested root hash
 	var rootNumber uint64 // (no root == always 0)
 
 	// Retrieve the last pivot block to short circuit rollbacks beyond it and the
 	// current freezer limit to start nuking id underflown
-	pivot := rawdb.ReadLastPivotNumber(bc.db)
-	frozen, _ := bc.db.Ancients()
+	pivot := rawdb.ReadLastPivotNumber(lc.db)
+	frozen, _ := lc.db.Ancients()
 
 	updateFn := func(db ethdb.KeyValueWriter, header *types.Header) (uint64, bool) {
 		// Rewind the blockchain, ensuring we don't end up with a stateless head
 		// block. Note, depth equality is permitted to allow using SetHead as a
 		// chain reparation mechanism without deleting any data!
-		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.NumberU64() {
-			newHeadBlock := bc.GetBlock(header.Hash(), header.Number.Uint64())
+		if currentBlock := lc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.NumberU64() {
+			newHeadBlock := lc.GetBlock(header.Hash(), header.Number.Uint64())
 			lastBlockNum := header.Number.Uint64()
 			if newHeadBlock == nil {
 				log.Error("Gap in the chain, rewinding to genesis", "number", header.Number, "hash", header.Hash())
-				newHeadBlock = bc.genesisBlock
+				newHeadBlock = lc.genesisBlock
 			} else {
 				// Block exists, keep rewinding until we find one with state,
 				// keeping rewinding until we exceed the optional threshold
@@ -568,26 +565,26 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 
 					enoughBeyondCount = beyondCount > maxBeyondBlocks
 
-					if _, err := state.New(newHeadBlock.Root(), bc.stateCache, bc.snaps); err != nil {
+					if _, err := state.New(newHeadBlock.Root(), lc.stateCache, lc.snaps); err != nil {
 						log.Trace("Block state missing, rewinding further", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash())
 						if pivot == nil || newHeadBlock.NumberU64() > *pivot {
-							parent := bc.GetBlock(newHeadBlock.ParentHash(), newHeadBlock.NumberU64()-1)
+							parent := lc.GetBlock(newHeadBlock.ParentHash(), newHeadBlock.NumberU64()-1)
 							if parent != nil {
 								newHeadBlock = parent
 								continue
 							}
 							log.Error("Missing block in the middle, aiming genesis", "number", newHeadBlock.NumberU64()-1, "hash", newHeadBlock.ParentHash())
-							newHeadBlock = bc.genesisBlock
+							newHeadBlock = lc.genesisBlock
 						} else {
 							log.Trace("Rewind passed pivot, aiming genesis", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "pivot", *pivot)
-							newHeadBlock = bc.genesisBlock
+							newHeadBlock = lc.genesisBlock
 						}
 					}
 					if beyondRoot || (enoughBeyondCount && root != common.Hash{}) || newHeadBlock.NumberU64() == 0 {
 						if enoughBeyondCount && (root != common.Hash{}) && rootNumber == 0 {
 							for {
 								lastBlockNum++
-								block := bc.GetBlockByNumber(lastBlockNum)
+								block := lc.GetBlockByNumber(lastBlockNum)
 								if block == nil {
 									break
 								}
@@ -601,7 +598,7 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 						break
 					}
 					log.Debug("Skipping block with threshold state", "number", newHeadBlock.NumberU64(), "hash", newHeadBlock.Hash(), "root", newHeadBlock.Root())
-					newHeadBlock = bc.GetBlock(newHeadBlock.ParentHash(), newHeadBlock.NumberU64()-1) // Keep rewinding
+					newHeadBlock = lc.GetBlock(newHeadBlock.ParentHash(), newHeadBlock.NumberU64()-1) // Keep rewinding
 				}
 			}
 			rawdb.WriteHeadBlockHash(db, newHeadBlock.Hash())
@@ -610,9 +607,9 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 			// In theory we should update all in-memory markers in the
 			// last step, however the direction of SetHead is from high
 			// to low, so it's safe to update in-memory markers directly.
-			bc.currentBlock.Store(newHeadBlock)
+			lc.currentBlock.Store(newHeadBlock)
 		}
-		head := bc.CurrentBlock().NumberU64()
+		head := lc.CurrentBlock().NumberU64()
 
 		// If setHead underflown the freezer threshold and the block processing
 		// intent afterwards is full block importing, delete the chain segment
@@ -626,11 +623,11 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 	// Rewind the header chain, deleting all block bodies until then
 	delFn := func(db ethdb.KeyValueWriter, hash common.Hash, num uint64) {
 		// Ignore the error here since light client won't hit this path
-		frozen, _ := bc.db.Ancients()
+		frozen, _ := lc.db.Ancients()
 		if num+1 <= frozen {
 			// Truncate all relative data(header, total difficulty, body, receipt
 			// and canonical hash) from ancient store.
-			if err := bc.db.TruncateAncients(num); err != nil {
+			if err := lc.db.TruncateAncients(num); err != nil {
 				log.Crit("Failed to truncate ancient data", "number", num, "err", err)
 			}
 			// Remove the hash <-> number mapping from the active store.
@@ -647,22 +644,22 @@ func (bc *LightChain) setHeadBeyondRoot(head uint64, root common.Hash, repair bo
 	// If SetHead was only called as a chain reparation method, try to skip
 	// touching the header chain altogether, unless the freezer is broken
 	if repair {
-		if target, force := updateFn(bc.db, bc.CurrentBlock().Header()); force {
-			bc.hc.SetHead(target, updateFn, delFn)
+		if target, force := updateFn(lc.db, lc.CurrentBlock().Header()); force {
+			lc.hc.SetHead(target, updateFn, delFn)
 		}
 	} else {
 		// Rewind the chain to the requested head and keep going backwards until a
 		// block with a state is found or fast sync pivot is passed
 		log.Warn("Rewinding blockchain", "target", head)
-		bc.hc.SetHead(head, updateFn, delFn)
+		lc.hc.SetHead(head, updateFn, delFn)
 	}
 	// Clear out any stale content from the caches
-	bc.bodyCache.Purge()
-	bc.bodyRLPCache.Purge()
-	bc.receiptsCache.Purge()
-	bc.blockCache.Purge()
+	lc.bodyCache.Purge()
+	lc.bodyRLPCache.Purge()
+	lc.receiptsCache.Purge()
+	lc.blockCache.Purge()
 
-	return rootNumber, bc.loadLastState()
+	return rootNumber, lc.loadLastState()
 }
 
 func (bc *LightChain) SetHead(head uint64) error {
@@ -788,30 +785,30 @@ func (bc *LightChain) Reset() error {
 
 // ResetWithGenesisBlock purges the entire blockchain, restoring it to the
 // specified genesis state.
-func (bc *LightChain) ResetWithGenesisBlock(genesis *types.Block) error {
+func (lc *LightChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	// Dump the entire block chain and purge the caches
-	if err := bc.SetHead(0); err != nil {
+	if err := lc.SetHead(0); err != nil {
 		return err
 	}
-	if !bc.chainmu.TryLock() {
+	if !lc.chainmu.TryLock() {
 		return errChainStopped
 	}
-	defer bc.chainmu.Unlock()
+	defer lc.chainmu.Unlock()
 
 	// Prepare the genesis block and reinitialise the chain
-	batch := bc.db.NewBatch()
+	batch := lc.db.NewBatch()
 	rawdb.WriteTd(batch, genesis.Hash(), genesis.NumberU64(), genesis.Difficulty())
 	rawdb.WriteBlock(batch, genesis)
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write genesis block", "err", err)
 	}
-	bc.writeHeadBlock(genesis)
+	lc.writeHeadBlock(genesis)
 
 	// Last update all in-memory chain markers
-	bc.genesisBlock = genesis
-	bc.currentBlock.Store(bc.genesisBlock)
-	bc.hc.SetGenesis(bc.genesisBlock.Header())
-	bc.hc.SetCurrentHeader(bc.genesisBlock.Header())
+	lc.genesisBlock = genesis
+	lc.currentBlock.Store(lc.genesisBlock)
+	lc.hc.SetGenesis(lc.genesisBlock.Header())
+	lc.hc.SetCurrentHeader(lc.genesisBlock.Header())
 	return nil
 }
 
