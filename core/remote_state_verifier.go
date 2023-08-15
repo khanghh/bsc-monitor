@@ -41,7 +41,7 @@ var (
 	verifyTaskExecutionTimer = metrics.NewRegisteredTimer("verifymanager/task/execution", nil)
 )
 
-type remoteVerifyManager struct {
+type RemoteVerifyManager struct {
 	bc            *BlockChain
 	taskLock      sync.RWMutex
 	tasks         map[common.Hash]*verifyTask
@@ -58,7 +58,7 @@ type remoteVerifyManager struct {
 	messageCh chan verifyMessage
 }
 
-func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure bool) (*remoteVerifyManager, error) {
+func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure bool) (*RemoteVerifyManager, error) {
 	verifiedCache, _ := lru.New(verifiedCacheSize)
 	block := blockchain.CurrentBlock()
 	if block == nil {
@@ -85,7 +85,7 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 		}
 	}
 
-	vm := &remoteVerifyManager{
+	vm := &RemoteVerifyManager{
 		bc:            blockchain,
 		tasks:         make(map[common.Hash]*verifyTask),
 		peers:         peers,
@@ -100,7 +100,7 @@ func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure b
 	return vm, nil
 }
 
-func (vm *remoteVerifyManager) mainLoop() {
+func (vm *RemoteVerifyManager) mainLoop() {
 	defer vm.chainHeadSub.Unsubscribe()
 
 	pruneTicker := time.NewTicker(pruneInterval)
@@ -148,7 +148,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 	}
 }
 
-func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
+func (vm *RemoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 	for i := 0; header != nil && i <= maxForkHeight; i++ {
 		// if is genesis block, mark it as verified and break.
 		if header.Number.Uint64() == 0 {
@@ -200,7 +200,7 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 	}
 }
 
-func (vm *remoteVerifyManager) cacheBlockVerified(hash common.Hash) {
+func (vm *RemoteVerifyManager) cacheBlockVerified(hash common.Hash) {
 	if vm.verifiedCache.Len() >= verifiedCacheSize {
 		vm.verifiedCache.RemoveOldest()
 	}
@@ -208,7 +208,7 @@ func (vm *remoteVerifyManager) cacheBlockVerified(hash common.Hash) {
 }
 
 // AncestorVerified function check block has been verified or it's a empty block.
-func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
+func (vm *RemoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	// find header of H-11 block.
 	header = vm.bc.GetHeaderByNumber(header.Number.Uint64() - maxForkHeight)
 	// If start from genesis block, there has not a H-11 block,return true.
@@ -237,12 +237,12 @@ func (vm *remoteVerifyManager) AncestorVerified(header *types.Header) bool {
 	return exist
 }
 
-func (vm *remoteVerifyManager) HandleRootResponse(vr *VerifyResult, pid string) error {
+func (vm *RemoteVerifyManager) HandleRootResponse(vr *VerifyResult, pid string) error {
 	vm.messageCh <- verifyMessage{verifyResult: vr, peerId: pid}
 	return nil
 }
 
-func (vm *remoteVerifyManager) CloseTask(task *verifyTask) {
+func (vm *RemoteVerifyManager) CloseTask(task *verifyTask) {
 	delete(vm.tasks, task.blockHeader.Hash())
 	task.Close()
 	verifyTaskCounter.Dec(1)

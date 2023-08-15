@@ -32,7 +32,7 @@ const badBlockCacheExpire = 30 * time.Second
 
 type BlockValidatorOption func(*BlockValidator) *BlockValidator
 
-func EnableRemoteVerifyManager(remoteValidator *remoteVerifyManager) BlockValidatorOption {
+func EnableRemoteVerifyManager(remoteValidator *RemoteVerifyManager) BlockValidatorOption {
 	return func(bv *BlockValidator) *BlockValidator {
 		bv.remoteValidator = remoteValidator
 		return bv
@@ -47,7 +47,7 @@ type BlockValidator struct {
 	config          *params.ChainConfig // Chain configuration options
 	bc              *BlockChain         // Canonical block chain
 	engine          consensus.Engine    // Consensus engine used for validating
-	remoteValidator *remoteVerifyManager
+	remoteValidator *RemoteVerifyManager
 }
 
 // NewBlockValidator returns a new block validator which is safe for re-use
@@ -186,7 +186,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	return err
 }
 
-func (v *BlockValidator) RemoteVerifyManager() *remoteVerifyManager {
+func (v *BlockValidator) RemoteVerifyManager() *RemoteVerifyManager {
 	return v.remoteValidator
 }
 
