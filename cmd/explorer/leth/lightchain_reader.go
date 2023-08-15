@@ -240,12 +240,12 @@ func (lc *LightChain) Snapshots() *snapshot.Tree {
 }
 
 // Validator returns the current validator.
-func (lc *LightChain) Validator() Validator {
+func (lc *LightChain) Validator() core.Validator {
 	return lc.validator
 }
 
 // Processor returns the current processor.
-func (lc *LightChain) Processor() Processor {
+func (lc *LightChain) Processor() core.Processor {
 	return lc.processor
 }
 

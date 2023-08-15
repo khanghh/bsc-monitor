@@ -30,59 +30,60 @@ type LightEthereum struct {
 }
 
 func (s *LightEthereum) BlockChain() *core.BlockChain { return nil }
+func (s *LightEthereum) LightChain() *LightChain      { return s.chain }
 func (s *LightEthereum) TxPool() *core.TxPool         { return s.txpool }
 func (s *LightEthereum) Engine() consensus.Engine     { return s.engine }
 func (s *LightEthereum) ChainDb() ethdb.Database      { return s.chainDb }
 func (s *LightEthereum) IsListening() bool            { return true }
 func (s *LightEthereum) Syncer() *ChainSyncer         { return s.syncer }
 
-func (leth *LightEthereum) APIs() []rpc.API {
+func (s *LightEthereum) APIs() []rpc.API {
 	// Append any APIs exposed explicitly by the consensus engine
-	apis := leth.engine.APIs(leth.BlockChain())
+	apis := s.engine.APIs(s.BlockChain())
 	// Append all the local APIs and return
 	return append(apis, []rpc.API{
 		{
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicEthereumAPI(leth.apiBackend),
+			Service:   ethapi.NewPublicEthereumAPI(s.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "eth",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicBlockChainAPI(leth.apiBackend),
+			Service:   ethapi.NewPublicBlockChainAPI(s.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPublicDebugAPI(leth.apiBackend),
+			Service:   ethapi.NewPublicDebugAPI(s.apiBackend),
 			Public:    true,
 		},
 		{
 			Namespace: "debug",
 			Version:   "1.0",
-			Service:   ethapi.NewPrivateDebugAPI(leth.apiBackend),
+			Service:   ethapi.NewPrivateDebugAPI(s.apiBackend),
 		},
 	}...)
 }
 
-func (leth *LightEthereum) Start() error {
-	leth.shutdownTracker.Start()
-	return leth.syncer.Start()
+func (s *LightEthereum) Start() error {
+	s.shutdownTracker.Start()
+	return s.syncer.Start()
 }
 
-func (leth *LightEthereum) Stop() error {
-	leth.syncer.Stop()
-	leth.chain.Stop()
-	leth.engine.Close()
+func (s *LightEthereum) Stop() error {
+	s.syncer.Stop()
+	s.chain.Stop()
+	s.engine.Close()
 
 	// Clean shutdown marker as the last thing before closing db
-	leth.shutdownTracker.Stop()
+	s.shutdownTracker.Stop()
 	return nil
 }
 
-func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error) {
+func New(config *Config, chainDb ethdb.Database, lcOpts ...LightChainOption) (leth *LightEthereum, err error) {
 	// Ensure configuration values are valid
 	if err := config.Sanitize(); err != nil {
 		return nil, err
@@ -119,7 +120,7 @@ func New(config *Config, chainDb ethdb.Database) (leth *LightEthereum, err error
 	}
 	leth.apiBackend = &LEthAPIBackend{leth}
 	leth.engine = parlia.New(chainConfig, chainDb, &EthCallAPI{leth.apiBackend}, genesisHash)
-	leth.chain, err = NewLightChain(leth.odr, chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig)
+	leth.chain, err = NewLightChain(leth.odr, chainDb, cacheConfig, chainConfig, leth.engine, config.EVMConfig, lcOpts...)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -151,6 +152,10 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		}
 	}
 	return err
+}
+
+func (v *BlockValidator) RemoteVerifyManager() *core.RemoteVerifyManager {
+	return nil
 }
 
 // CalcGasLimit computes the gas limit of the next block after parent. It aims

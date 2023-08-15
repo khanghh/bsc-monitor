@@ -59,8 +59,8 @@ func (d *ChainSyncer) importChain(results []*types.Block) error {
 	// Retrieve the a batch of results to import
 	first, last := results[0], results[len(results)-1]
 	log.Debug("Inserting downloaded chain", "items", len(results),
-		"firstnum", first.Number, "firsthash", first.Hash(),
-		"lastnum", last.Number, "lasthash", last.Hash(),
+		"firstnum", first.Number(), "firsthash", first.Hash(),
+		"lastnum", last.Number(), "lasthash", last.Hash(),
 	)
 	// Downloaded blocks are always regarded as trusted after the
 	// transition. Because the downloaded chain is guided by the

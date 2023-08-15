@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -85,13 +86,13 @@ type insertIterator struct {
 	results <-chan error // Verification result sink from the consensus engine
 	errors  []error      // Header verification errors for the blocks
 
-	index     int       // Current offset of the iterator
-	validator Validator // Validator to run if verification succeeds
+	index     int            // Current offset of the iterator
+	validator core.Validator // Validator to run if verification succeeds
 }
 
 // newInsertIterator creates a new iterator based on the given blocks, which are
 // assumed to be a contiguous chain.
-func newInsertIterator(chain types.Blocks, results <-chan error, validator Validator) *insertIterator {
+func newInsertIterator(chain types.Blocks, results <-chan error, validator core.Validator) *insertIterator {
 	return &insertIterator{
 		chain:     chain,
 		results:   results,

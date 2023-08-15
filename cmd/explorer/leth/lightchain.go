@@ -80,6 +80,8 @@ const (
 	BlockChainVersion uint64 = 8
 )
 
+type LightChainOption func(*LightChain) (*LightChain, error)
+
 type LightChain struct {
 	// configurations
 	chainConfig *params.ChainConfig // Chain & network configuration
@@ -105,8 +107,8 @@ type LightChain struct {
 
 	// block processing
 	engine    consensus.Engine
-	processor Processor
-	validator Validator
+	processor core.Processor
+	validator core.Validator
 	forker    *core.ForkChoice
 	chainmu   *syncx.ClosableMutex
 
@@ -426,7 +428,7 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		lc.updateHighestVerifiedHeader(block.Header())
 		statedb.StartPrefetcher("chain")
 		statedb.SetExpectedStateRoot(block.Root())
-		statedb, receipts, logs, usedGas, err := lc.processor.Process(block, statedb, lc.vmConfig)
+		statedb, receipts, logs, usedGas, err := lc.Processor().Process(block, statedb, lc.vmConfig)
 		if err != nil {
 			lc.reportBadBlock(block, receipts, err)
 			return it.index, err
@@ -812,7 +814,7 @@ func (lc *LightChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	return nil
 }
 
-func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config) (*LightChain, error) {
+func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, opts ...LightChainOption) (*LightChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
@@ -926,5 +928,12 @@ func NewLightChain(odr OdrBackend, db ethdb.Database, cacheConfig *core.CacheCon
 		lc.snaps, _ = snapshot.New(lc.db, lc.stateCache.TrieDB(), lc.cacheConfig.SnapshotLimit, int(lc.cacheConfig.TriesInMemory), head.Root(), !lc.cacheConfig.SnapshotWait, true, recover, lc.stateCache.NoTries())
 	}
 	rawdb.WriteSafePointBlockNumber(lc.db, lc.CurrentBlock().NumberU64())
+	// do options before start any routine
+	for _, option := range opts {
+		lc, err = option(lc)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return lc, nil
 }
