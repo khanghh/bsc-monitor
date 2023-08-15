@@ -13,7 +13,7 @@ import (
 )
 
 type RLPMarshaler interface {
-	MarshalJSON() ([]byte, error)
+	MarshalRLP() ([]byte, error)
 }
 
 type RLPUnmarshaler interface {

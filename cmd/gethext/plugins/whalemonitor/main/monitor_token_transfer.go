@@ -3,7 +3,7 @@ package main
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
+	"github.com/ethereum/go-ethereum/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugins/whalemonitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/common"

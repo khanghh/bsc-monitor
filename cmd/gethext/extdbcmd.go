@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
-	"github.com/ethereum/go-ethereum/cmd/gethext/extdb"
+	"github.com/ethereum/go-ethereum/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/extdb"
 	"gopkg.in/urfave/cli.v1"
 )
 

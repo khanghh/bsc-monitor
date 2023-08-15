@@ -5,7 +5,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
+	"github.com/ethereum/go-ethereum/abiutils"
 	"github.com/ethereum/go-ethereum/common"
 )
 

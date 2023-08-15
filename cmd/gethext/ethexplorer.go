@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/cmd/gethext/abiutils"
+	"github.com/ethereum/go-ethereum/abiutils"
 	"github.com/ethereum/go-ethereum/cmd/gethext/monitor"
 	"github.com/ethereum/go-ethereum/cmd/gethext/plugin"
 	"github.com/ethereum/go-ethereum/cmd/gethext/task"
