@@ -33,15 +33,6 @@ type LightProcessor struct {
 	engine consensus.Engine    // Consensus engine used for block rewards
 }
 
-// NewLightProcessor initialises a new StateProcessor.
-func NewLightProcessor(config *params.ChainConfig, bc *LightChain, engine consensus.Engine) *LightProcessor {
-	return &LightProcessor{
-		config: config,
-		lc:     bc,
-		engine: engine,
-	}
-}
-
 // Process processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb and applying any rewards to both
 // the processor (coinbase) and any included uncles.
@@ -121,6 +112,15 @@ func (p *LightProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	return statedb, receipts, allLogs, *usedGas, nil
+}
+
+// NewLightProcessor initialises a new StateProcessor.
+func NewLightProcessor(config *params.ChainConfig, bc *LightChain, engine consensus.Engine) *LightProcessor {
+	return &LightProcessor{
+		config: config,
+		lc:     bc,
+		engine: engine,
+	}
 }
 
 func applyTransaction(msg types.Message, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {

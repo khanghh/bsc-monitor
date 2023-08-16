@@ -80,6 +80,9 @@ const (
 	BlockChainVersion uint64 = 8
 )
 
+type PreprocessHook func(*types.Block, *state.StateDB, vm.Config)
+type PostprocessHook func(*state.StateDB, types.Receipts, []*types.Log, uint64, error)
+
 type LightChainOption func(*LightChain) (*LightChain, error)
 
 type LightChain struct {
@@ -106,11 +109,13 @@ type LightChain struct {
 	receiptsCache *lru.Cache     // Cache for the most recent receipts per block
 
 	// block processing
-	engine    consensus.Engine
-	processor core.Processor
-	validator core.Validator
-	forker    *core.ForkChoice
-	chainmu   *syncx.ClosableMutex
+	engine      consensus.Engine
+	validator   core.Validator
+	forker      *core.ForkChoice
+	chainmu     *syncx.ClosableMutex
+	processor   core.Processor
+	preprocess  PreprocessHook
+	postprocess PostprocessHook
 
 	// statedb processing
 	snaps      *snapshot.Tree
@@ -428,12 +433,18 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		lc.updateHighestVerifiedHeader(block.Header())
 		statedb.StartPrefetcher("chain")
 		statedb.SetExpectedStateRoot(block.Root())
+		if lc.preprocess != nil {
+			lc.preprocess(block, statedb, lc.vmConfig)
+		}
 		statedb, receipts, logs, usedGas, err := lc.Processor().Process(block, statedb, lc.vmConfig)
 		if err != nil {
 			lc.reportBadBlock(block, receipts, err)
 			return it.index, err
 		}
 		rootHash := statedb.IntermediateRoot(true)
+		if lc.postprocess != nil {
+			lc.postprocess(statedb, receipts, logs, usedGas, err)
+		}
 		log.Debug("Processed block", "block", block.Hash().Hex(), "number", block.NumberU64(), "root", rootHash.Hex())
 		lc.cacheReceipts(block.Hash(), receipts)
 		lc.cacheBlock(block.Hash(), block)
@@ -811,6 +822,16 @@ func (lc *LightChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	lc.currentBlock.Store(lc.genesisBlock)
 	lc.hc.SetGenesis(lc.genesisBlock.Header())
 	lc.hc.SetCurrentHeader(lc.genesisBlock.Header())
+	return nil
+}
+
+func (lc *LightChain) SetProcessorHooks(preprocess PreprocessHook, postprocess PostprocessHook) error {
+	if !lc.chainmu.TryLock() {
+		return errChainStopped
+	}
+	defer lc.chainmu.Unlock()
+	lc.preprocess = preprocess
+	lc.postprocess = postprocess
 	return nil
 }
 
