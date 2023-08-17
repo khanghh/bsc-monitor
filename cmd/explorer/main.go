@@ -85,11 +85,19 @@ func run(ctx *cli.Context) error {
 		return err
 	}
 
-	_, err = registerLightEthereum(stack, &config.LEth)
+	leth, err := makeLightEthereum(stack, &config.LEth)
 	if err != nil {
 		return err
 	}
 
+	indexer, err := makeChainIndexer(stack, &config.Indexer, leth)
+	if err != nil {
+		return err
+	}
+
+	stack.RegisterLifeCycle(leth)
+	stack.RegisterAPIs(leth.APIs())
+	stack.RegisterLifeCycle(indexer)
 	return runServiceStack(stack)
 }
 

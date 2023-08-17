@@ -84,11 +84,6 @@ func (s *LightEthereum) Stop() error {
 }
 
 func New(config *Config, chainDb ethdb.Database, lcOpts ...LightChainOption) (leth *LightEthereum, err error) {
-	// Ensure configuration values are valid
-	if err := config.Sanitize(); err != nil {
-		return nil, err
-	}
-
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlockWithOverride(chainDb, config.Genesis, nil, nil, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr

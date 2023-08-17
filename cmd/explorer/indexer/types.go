@@ -1,41 +1,75 @@
 package indexer
 
 import (
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
-type txContext = TxContext
-type callFrame = CallFrame
+var (
+	nilAddress = common.Address{}
+	nilHash    = common.Hash{}
+)
 
-// TxContext provides execution context for transaction
-type TxContext struct {
-	Block       *types.Block       // block in which the transaction was included
-	Transaction *types.Transaction // the transaction in block
-	TxIndex     uint64             // index of the transaction within the block
-	Message     *types.Message     // message derived from the transaction
-	Reverted    bool               // the state of transaction successful or reverted
-	CallStack   []CallFrame
+type AccountIndexData struct {
+	SentTxs     []common.Hash
+	InternalTxs []common.Hash
+	TokenTxs    []common.Hash
+	Holders     []common.Address
 }
 
-// CallCtx provides context information for a function call
-type CallCtx struct {
-	*txContext
-	*callFrame
-	Parent *CallCtx // pointer to the parent method context that executes this call
-	Error  error
+func (s *AccountIndexData) AddSentTx(tx common.Hash) {
+	s.SentTxs = append(s.SentTxs, tx)
 }
 
-// ReExecHook provides a way to hook into the re-execution process
-type ReExecHook interface {
-	// OnTxStart is called when transaction execution starts
-	OnTxStart(ctx *TxContext, gasLimit uint64)
+func (s *AccountIndexData) AddInternalTx(tx common.Hash) {
+	s.InternalTxs = append(s.InternalTxs, tx)
+}
 
-	// OnTxEnd is called when transaction execution ends
-	OnTxEnd(ctx *TxContext, resetGas uint64)
+func (s *AccountIndexData) AddTokenTx(tx common.Hash) {
+	s.TokenTxs = append(s.TokenTxs, tx)
+}
 
-	// OnCallEnter is called when execution enters a method
-	OnCallEnter(ctx *CallCtx)
+func (s *AccountIndexData) AddHolder(addr common.Address) {
+	s.Holders = append(s.Holders, addr)
+}
 
-	// OnCallExit is called when execution exits from a method
-	OnCallExit(ctx *CallCtx)
+// AccountIndexState is extra data for state trie (trie leaf is `types.StateAccount`)
+type AccountIndexState struct {
+	LastSentTxRef     []byte
+	LastInternalTxRef []byte
+	LastTokenTxRef    []byte
+	LastHolderRef     []byte
+}
+
+type AccountStats struct {
+	SentTxCount     uint64
+	InternalTxCount uint64
+	TokenTxCount    uint64
+	HolderCount     uint64
+}
+
+// AccountInfo holds basic information of an account
+type AccountInfo struct {
+	Name    string
+	Tags    []string
+	FirstTx common.Hash
+}
+
+// ContractInfo is additional data for account if it's a contract
+type ContractInfo struct {
+	Interfaces []string       // List of interface names the contract implemented
+	MethodSigs []string       // List of 4-bytes method signatures in contract
+	OwnABI     []byte         // JSON ABI which elements are excluded from implemented intefaces
+	Creator    common.Address // Contract creator address
+}
+
+type AccountDetail struct {
+	Address common.Address
+	*AccountInfo
+	*ContractInfo
+}
+
+func isEmptyAccountInfo(acc *AccountInfo) bool {
+	return acc.Name == "" &&
+		len(acc.Tags) == 0 &&
+		acc.FirstTx == nilHash
 }

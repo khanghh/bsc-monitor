@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/urfave/cli.v1"
 
+	"github.com/ethereum/go-ethereum/cmd/explorer/indexer"
 	"github.com/ethereum/go-ethereum/cmd/explorer/leth"
 	"github.com/ethereum/go-ethereum/cmd/explorer/service"
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -37,6 +38,7 @@ import (
 
 type appConfig struct {
 	LEth    leth.Config
+	Indexer indexer.Config
 	Service service.Config
 	Metrics metrics.Config
 }
@@ -146,6 +148,7 @@ func deprecated(field string) bool {
 func makeAppConfig(ctx *cli.Context) *appConfig {
 	config := &appConfig{
 		LEth:    leth.DefaultConfig,
+		Indexer: indexer.DefaultConfig,
 		Service: service.DefaultConfig,
 		Metrics: metrics.DefaultConfig,
 	}
