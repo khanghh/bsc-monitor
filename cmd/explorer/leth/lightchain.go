@@ -80,8 +80,8 @@ const (
 	BlockChainVersion uint64 = 8
 )
 
-type PreprocessHook func(*types.Block, *state.StateDB, vm.Config)
-type PostprocessHook func(*state.StateDB, types.Receipts, []*types.Log, uint64, error)
+type PreprocessHook func(*types.Block, *state.StateDB, *vm.Config)
+type PostprocessHook func(*types.Block, *state.StateDB, types.Receipts, []*types.Log, uint64, error)
 
 type LightChainOption func(*LightChain) (*LightChain, error)
 
@@ -434,7 +434,7 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		statedb.StartPrefetcher("chain")
 		statedb.SetExpectedStateRoot(block.Root())
 		if lc.preprocess != nil {
-			lc.preprocess(block, statedb, lc.vmConfig)
+			lc.preprocess(block, statedb, &lc.vmConfig)
 		}
 		statedb, receipts, logs, usedGas, err := lc.Processor().Process(block, statedb, lc.vmConfig)
 		if err != nil {
@@ -443,7 +443,7 @@ func (lc *LightChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		}
 		rootHash := statedb.IntermediateRoot(true)
 		if lc.postprocess != nil {
-			lc.postprocess(statedb, receipts, logs, usedGas, err)
+			lc.postprocess(block, statedb, receipts, logs, usedGas, err)
 		}
 		log.Debug("Processed block", "block", block.Hash().Hex(), "number", block.NumberU64(), "root", rootHash.Hex())
 		lc.cacheReceipts(block.Hash(), receipts)

@@ -25,6 +25,7 @@ var (
 
 func init() {
 	app = cli.NewApp()
+	app.Action = run
 	app.Name = filepath.Base(os.Args[0])
 	app.Usage = "Binance Smart Chain explorer service"
 	app.Version = fmt.Sprintf("%s - %s ", gitCommit, gitDate)
@@ -34,9 +35,11 @@ func init() {
 		genesisFlag,
 		utils.DataDirFlag,
 	}
+	app.Commands = []cli.Command{
+		extdbCommand,
+	}
 	app.Flags = append(app.Flags, debug.Flags...)
 
-	app.Action = run
 	app.Before = func(ctx *cli.Context) error {
 		return debug.Setup(ctx)
 	}
@@ -80,10 +83,7 @@ func run(ctx *cli.Context) error {
 	config := makeAppConfig(ctx)
 	applyMetricConfig(ctx, &config.Metrics)
 
-	stack, err := service.NewServiceStack(&config.Service)
-	if err != nil {
-		return err
-	}
+	stack := newServiceStack(&config.Service)
 
 	leth, err := makeLightEthereum(stack, &config.LEth)
 	if err != nil {

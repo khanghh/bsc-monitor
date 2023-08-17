@@ -4,6 +4,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/explorer/indexer"
 	"github.com/ethereum/go-ethereum/cmd/explorer/leth"
 	"github.com/ethereum/go-ethereum/cmd/explorer/service"
+	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -13,6 +14,14 @@ const (
 	indexerDbNamespace = "db/indexer/indexdata" // namespace of chain indexer for metrics collection
 	indexerDataDir     = "indexdata"            // index data directory
 )
+
+func newServiceStack(config *service.Config) *service.ServiceStack {
+	stack, err := service.NewServiceStack(config)
+	if err != nil {
+		utils.Fatalf("Could not create service stack. %v", err)
+	}
+	return stack
+}
 
 func makeLightEthereum(stack *service.ServiceStack, config *leth.Config, lcOpts ...leth.LightChainOption) (*leth.LightEthereum, error) {
 	// Ensure configuration values are valid
