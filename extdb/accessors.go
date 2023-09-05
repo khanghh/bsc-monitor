@@ -70,13 +70,24 @@ func WriteContractInfo(db ethdb.KeyValueWriter, addr common.Address, entry []byt
 	}
 }
 
-func ReadAccountIndexState(db ethdb.KeyValueReader, hash common.Hash) []byte {
-	data, _ := db.Get(AccountIndexStateKey(hash))
+func ReadAccountStats(db ethdb.KeyValueReader, addr common.Address) []byte {
+	data, _ := db.Get(AccountStatsKey(addr))
 	return data
 }
 
-func WriteAccountIndexState(db ethdb.KeyValueWriter, hash common.Hash, entry []byte) {
-	if err := db.Put(AccountIndexStateKey(hash), entry); err != nil {
+func WriteAccountStats(db ethdb.KeyValueWriter, addr common.Address, entry []byte) {
+	if err := db.Put(AccountStatsKey(addr), entry); err != nil {
+		log.Crit("Failed to write account stats", "err", err)
+	}
+}
+
+func ReadAccountIndexRefs(db ethdb.KeyValueReader, hash common.Hash) []byte {
+	data, _ := db.Get(AccountIndexRefsKey(hash))
+	return data
+}
+
+func WriteAccountIndexRefs(db ethdb.KeyValueWriter, hash common.Hash, entry []byte) {
+	if err := db.Put(AccountIndexRefsKey(hash), entry); err != nil {
 		log.Crit("Failed to write account index state", "err", err)
 	}
 }

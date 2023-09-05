@@ -22,7 +22,8 @@ var (
 
 	AccountInfoPrefix       = []byte("a")   // AccountInfoPrefix + address -> account info
 	ContractInfoPrefix      = []byte("c")   // ContractInfoPrefix + address -> contract info
-	AccountIndexStatePrefix = []byte("s")   // AccountIndexStatePrefix + hash(StateAccount) -> account index state
+	AccountStatsPrefix      = []byte("s")   // AccountStatsPrefix + address -> account index data statistic
+	AccountIndexRefsPrefix  = []byte("r")   // AccountIndexRefsPrefix + hash(StateAccount) -> account index data references
 	AccountSentTxPrefix     = []byte("t")   // AccountSentTxPrefix + address + refNum -> transaction hash
 	AccountInternalTxPrefix = []byte("i")   // AccountInternalTxPrefix + address + refNum -> transaction hash
 	AccountTokenTxPrefix    = []byte("x")   // AccountTokenTxPrefix + address + refNum -> transaction hash
@@ -47,8 +48,13 @@ func ContractInfoKey(addr common.Address) []byte {
 	return append(ContractInfoPrefix, addrHash.Bytes()...)
 }
 
-func AccountIndexStateKey(hash common.Hash) []byte {
-	return append(AccountIndexStatePrefix, hash.Bytes()...)
+func AccountStatsKey(addr common.Address) []byte {
+	addrHash := crypto.Keccak256Hash(addr.Bytes())
+	return append(AccountStatsPrefix, addrHash.Bytes()...)
+}
+
+func AccountIndexRefsKey(hash common.Hash) []byte {
+	return append(AccountIndexRefsPrefix, hash.Bytes()...)
 }
 
 func indexItemKey(prefix []byte, addr common.Address, refNum uint64) []byte {

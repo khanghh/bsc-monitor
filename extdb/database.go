@@ -79,7 +79,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			accounts.Add(size)
 		case bytes.HasPrefix(key, ContractInfoPrefix) && len(key) == (len(ContractInfoPrefix)+common.AddressLength):
 			contracts.Add(size)
-		case bytes.HasPrefix(key, AccountIndexStatePrefix) && len(key) == (len(AccountIndexStatePrefix)+common.HashLength):
+		case bytes.HasPrefix(key, AccountIndexRefsPrefix) && len(key) == (len(AccountIndexRefsPrefix)+common.HashLength):
 			indexStates.Add(size)
 		case bytes.HasPrefix(key, AccountSentTxPrefix) && len(key) == (len(AccountSentTxPrefix)+common.AddressLength+8):
 			indexRecords.Add(size)
