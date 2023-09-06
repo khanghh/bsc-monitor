@@ -23,7 +23,7 @@ var (
 	AccountInfoPrefix       = []byte("a")   // AccountInfoPrefix + address -> account info
 	ContractInfoPrefix      = []byte("c")   // ContractInfoPrefix + address -> contract info
 	AccountStatsPrefix      = []byte("s")   // AccountStatsPrefix + address -> account index data statistic
-	AccountIndexRefsPrefix  = []byte("r")   // AccountIndexRefsPrefix + hash(StateAccount) -> account index data references
+	AccountIndexRefsPrefix  = []byte("r")   // AccountIndexRefsPrefix + hash(StateAccount) -> account index data reference numbers
 	AccountSentTxPrefix     = []byte("t")   // AccountSentTxPrefix + address + refNum -> transaction hash
 	AccountInternalTxPrefix = []byte("i")   // AccountInternalTxPrefix + address + refNum -> transaction hash
 	AccountTokenTxPrefix    = []byte("x")   // AccountTokenTxPrefix + address + refNum -> transaction hash
@@ -32,10 +32,6 @@ var (
 	InterfaceABIPrefix      = []byte("I")   // InterfaceABIPrefix + name + InterfaceABISuffix -> contract interface ABI
 	InterfaceABISuffix      = []byte("abi") // InterfaceABISuffix suffix of interface ABI key. e.g: IERC20abi -> ERC20 interface ABI
 	PluginDataKeyPrefix     = []byte("p")   // PluginDataKeyPrefix + plugin name + key -> value
-)
-
-var (
-	nilHash = common.Hash{}
 )
 
 func AccountInfoKey(addr common.Address) []byte {

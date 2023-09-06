@@ -23,7 +23,7 @@ type RLPUnmarshaler interface {
 func ReadLastIndexRoot(db ethdb.KeyValueReader) common.Hash {
 	data, _ := db.Get(LastIndexStateKey)
 	if len(data) != common.HashLength {
-		return nilHash
+		return common.Hash{}
 	}
 	return common.BytesToHash(data)
 }
@@ -37,7 +37,7 @@ func WriteLastIndexRoot(db ethdb.KeyValueWriter, root common.Hash) {
 func ReadLastIndexBlock(db ethdb.KeyValueReader) common.Hash {
 	data, _ := db.Get(LastIndexBlockKey)
 	if len(data) != common.HashLength {
-		return nilHash
+		return common.Hash{}
 	}
 	return common.BytesToHash(data)
 }
@@ -88,7 +88,7 @@ func ReadAccountIndexRefs(db ethdb.KeyValueReader, hash common.Hash) []byte {
 
 func WriteAccountIndexRefs(db ethdb.KeyValueWriter, hash common.Hash, entry []byte) {
 	if err := db.Put(AccountIndexRefsKey(hash), entry); err != nil {
-		log.Crit("Failed to write account index state", "err", err)
+		log.Crit("Failed to write account index reference numbers", "err", err)
 	}
 }
 
