@@ -1,136 +1,124 @@
-//
-// Created on 2023/2/21 by khanghh
-// Project: github.com/verichains/chain-monitor
-// Copyright (c) 2023 Verichains Lab
-//
-
 package indexer
 
 import (
-	"time"
+	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/extdb"
-	"github.com/ethereum/go-ethereum/rlp"
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/labstack/gommon/log"
 )
 
-const (
-	maxAccountCacheSize  = 1000
-	maxMetadataCacheSize = 1000
-	purgeInterval        = 10 * time.Minute
-)
+type indexData struct {
+	blockNum uint64
+	// data extracted from block processing
+	accounts    map[common.Address]*AccountInfo
+	contracts   map[common.Address]*ContractInfo
+	accountData map[common.Address]*AccountIndexData
+	// generated data for easy access and iteration
+	accountStats map[common.Address]*AccountStats
+	accountRefs  map[common.Address]*AccountIndexRefs
+}
+
+type indexLayer interface {
+	Root() common.Hash
+	Parent() indexLayer
+	AccountInfo(addr common.Address) (*AccountInfo, error)
+	ContractInfo(addr common.Address) (*ContractInfo, error)
+	AccountStats(addr common.Address) (*AccountStats, error)
+	Update(root common.Hash, data *indexData) *diffLayer
+}
 
 // IndexDB store index data for account, also take care of caching things
 type IndexDB struct {
-	diskdb     ethdb.Database
-	trieCache  state.Database
-	accCache   *lru.Cache // caching AccountDetail
-	stateCache *lru.Cache // caching AccountIndexState
+	diskdb   ethdb.Database
+	triedb   *trie.Database
+	cache    int
+	diskRoot common.Hash
+	layers   map[common.Hash]indexLayer
+	lock     sync.RWMutex
 }
 
 func (db *IndexDB) DiskDB() ethdb.Database {
 	return db.diskdb
 }
 
-func (db *IndexDB) NewBatch() ethdb.Batch {
-	return db.diskdb.NewBatch()
+func (db *IndexDB) DiskRoot() common.Hash {
+	return db.diskRoot
 }
 
-func (db *IndexDB) readAccountInfo(addr common.Address) (*AccountInfo, error) {
-	if enc := extdb.ReadAccountInfo(db.diskdb, addr); len(enc) > 0 {
-		accInfo := new(AccountInfo)
-		if err := rlp.DecodeBytes(enc, &accInfo); err != nil {
-			return nil, err
-		}
-		return accInfo, nil
-	}
-	return nil, ErrNoAccountInfo
+func (db *IndexDB) Layers() int {
+	return len(db.layers)
 }
 
-func (db *IndexDB) readContractInfo(addr common.Address) (*ContractInfo, error) {
-	if enc := extdb.ReadContractInfo(db.diskdb, addr); len(enc) > 0 {
-		contractInfo := new(ContractInfo)
-		if err := rlp.DecodeBytes(enc, &contractInfo); err != nil {
-			return nil, err
-		}
-		return contractInfo, nil
+func loadOrCreateDiskLayer(diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash, cache int) (*diskLayer, error) {
+	indexRoot := extdb.ReadLastIndexRoot(diskdb)
+	if (indexRoot != common.Hash{}) && indexRoot != root {
+		indexBlock := extdb.ReadLastIndexBlock(diskdb)
+		log.Warn("Index disk root is not continuous with chain", "root", indexRoot.Hex(), "number", indexBlock, "chainroot", root)
 	}
-	return nil, ErrNoContractInfo
+	return newDiskLayer(diskdb, triedb, root, cache), nil
 }
 
-func (db *IndexDB) AccountDetail(addr common.Address) (*AccountDetail, error) {
-	if cached, ok := db.accCache.Get(addr); ok {
-		return cached.(*AccountDetail), nil
+func (db *IndexDB) Commit(root common.Hash) error {
+	return nil
+}
+
+func (db *IndexDB) getLayer(root common.Hash) indexLayer {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return db.layers[root]
+}
+
+func (db *IndexDB) hasLayer(root common.Hash) bool {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return db.layers[root] != nil
+}
+
+// Cap traverses downwards the tree from the given node until the number of allowed layers are crossed.
+// All layers ersisted all layers beyond the root
+func (db *IndexDB) cap(root common.Hash, layers uint64) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return nil
+}
+
+// update create new index layer descent from the parent root hash
+func (db *IndexDB) update(parentRoot, childRoot common.Hash, data *indexData) error {
+	if childRoot == parentRoot {
+		return ErrCircularUpdate
 	}
-	accInfo, err := db.readAccountInfo(addr)
+	if db.hasLayer(childRoot) {
+		return ErrCircularUpdate
+	}
+
+	parent := db.getLayer(parentRoot)
+	if parent == nil {
+		return fmt.Errorf("parent layer missing: [#%x]", parentRoot)
+	}
+	layer := parent.Update(childRoot, data)
+
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	db.layers[childRoot] = layer
+	return nil
+}
+
+func NewIndexDB(diskdb ethdb.Database, triedb *trie.Database, root common.Hash, cache int) (*IndexDB, error) {
+	indexdb := &IndexDB{
+		diskdb: diskdb,
+		triedb: triedb,
+		cache:  cache,
+		layers: make(map[common.Hash]indexLayer),
+	}
+	diskLayer, err := loadOrCreateDiskLayer(diskdb, triedb, root, cache)
 	if err != nil {
 		return nil, err
 	}
-	contractInfo, err := db.readContractInfo(addr)
-	if err != ErrNoContractInfo {
-		return nil, err
-	}
-	detail := &AccountDetail{
-		Address:      addr,
-		AccountInfo:  accInfo,
-		ContractInfo: contractInfo,
-	}
-	db.cacheAccountDetail(addr, detail)
-	return detail, nil
-}
-
-func (db *IndexDB) cacheAccountDetail(addr common.Address, detail *AccountDetail) {
-	db.accCache.Add(addr, detail)
-}
-
-func (db *IndexDB) OpenTrie(root common.Hash) (state.Trie, error) {
-	return db.trieCache.OpenTrie(root)
-}
-
-func (db *IndexDB) OpenIndexTrie(root common.Hash) (*extdb.TrieExt, error) {
-	tr, err := db.trieCache.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
-	return extdb.NewTrieExt(db.diskdb, tr, extdb.AccountIndexStatePrefix), nil
-}
-
-func (db *IndexDB) cacheAccountIndexState(hash common.Hash, data *AccountIndexState) {
-	db.stateCache.Add(hash, data)
-}
-
-func (db *IndexDB) AccountIndexState(hash common.Hash) (*AccountIndexState, error) {
-	if cached, ok := db.stateCache.Get(hash); ok {
-		return cached.(*AccountIndexState), nil
-	}
-	if enc := extdb.ReadAccountIndexState(db.diskdb, hash); len(enc) > 0 {
-		stats := new(AccountIndexState)
-		if err := rlp.DecodeBytes(enc, &stats); err != nil {
-			return nil, err
-		}
-	}
-	return nil, nil
-}
-
-func (db *IndexDB) PurgeCache() {
-	if db.accCache != nil {
-		db.accCache.Purge()
-	}
-	if db.stateCache != nil {
-		db.stateCache.Purge()
-	}
-}
-
-func NewIndexDB(diskdb ethdb.Database, trieCache state.Database) *IndexDB {
-	accCache, _ := lru.New(maxAccountCacheSize)
-	metaCache, _ := lru.New(maxMetadataCacheSize)
-	return &IndexDB{
-		diskdb:     diskdb,
-		trieCache:  trieCache,
-		accCache:   accCache,
-		stateCache: metaCache,
-	}
+	indexdb.diskRoot = root
+	indexdb.layers[root] = diskLayer
+	return indexdb, nil
 }

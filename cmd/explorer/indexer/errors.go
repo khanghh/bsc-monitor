@@ -5,10 +5,11 @@ import (
 )
 
 var (
-	ErrMissingTrieNode = errors.New("missing trie node")
-	ErrNoAccountStats  = errors.New("account statistics not found")
-	ErrNoAccountState  = errors.New("account state not found")
-	ErrNoAccountInfo   = errors.New("account info not found")
-	ErrNoIndexMetadata = errors.New("account index metadata not found")
-	ErrNoContractInfo  = errors.New("contract info not found")
+	ErrMissingTrieNode   = errors.New("missing trie node")
+	ErrNoAccountInfo     = errors.New("account info not found")
+	ErrNoContractInfo    = errors.New("contract info not found")
+	ErrNoAccountStats    = errors.New("account statistics not found")
+	ErrIndexLayerStale   = errors.New("index layer stale")
+	ErrIndexLayerMissing = errors.New("index layer missing")
+	ErrCircularUpdate    = errors.New("circular update index layer")
 )
