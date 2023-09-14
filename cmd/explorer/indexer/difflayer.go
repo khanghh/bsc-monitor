@@ -11,6 +11,7 @@ type diffLayer struct {
 	parent indexLayer
 	root   common.Hash
 	data   *indexData
+	stale  bool
 	lock   sync.RWMutex
 }
 
@@ -20,6 +21,10 @@ func (dl *diffLayer) Root() common.Hash {
 
 func (dl *diffLayer) Parent() indexLayer {
 	return dl.parent
+}
+
+func (dl *diffLayer) Stale() bool {
+	return dl.stale
 }
 
 func (dl *diffLayer) getAccountInfo(addr common.Address, depth int) (*AccountInfo, error) {
@@ -58,8 +63,6 @@ func (dl *diffLayer) getAccountStats(addr common.Address, depth int) (*AccountSt
 	return dl.parent.AccountStats(addr)
 }
 
-// AccountDetail retrieves account info and contract info of the given address
-// also set the account when by add it to the
 func (dl *diffLayer) AccountInfo(addr common.Address) (*AccountInfo, error) {
 	return dl.getAccountInfo(addr, 0)
 }
@@ -72,11 +75,19 @@ func (dl *diffLayer) AccountStats(addr common.Address) (*AccountStats, error) {
 	return dl.getAccountStats(addr, 0)
 }
 
-func (dl *diffLayer) Update(root common.Hash, data *indexData) *diffLayer {
-	return nil
-}
-
 func newDiffLayer(parent indexLayer, root common.Hash, data *indexData) *diffLayer {
+	for addr, accData := range data.accountData {
+		stats, err := parent.AccountStats(addr)
+		if err != nil {
+			stats = &AccountStats{}
+		}
+		data.accountStats[addr] = &AccountStats{
+			SentTxCount:     stats.SentTxCount + uint64(len(accData.SentTxs)),
+			InternalTxCount: stats.SentTxCount + uint64(len(accData.InternalTxs)),
+			TokenTxCount:    stats.SentTxCount + uint64(len(accData.TokenTxs)),
+			HolderCount:     stats.SentTxCount + uint64(len(accData.Holders)),
+		}
+	}
 	return &diffLayer{
 		parent: parent,
 		root:   root,

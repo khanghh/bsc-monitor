@@ -52,7 +52,7 @@ func (idx *ChainIndexer) PostprocessBlock(block *types.Block, state *state.State
 		return
 	}
 	idx.indexdb.update(idx.parent, block.Root(), idx.data)
-	log.Debug("Chain indexer processed block", "block", block.NumberU64(), "txns", block.Transactions().Len())
+	log.Info("Chain indexer processed block", "block", block.NumberU64(), "txns", block.Transactions().Len())
 }
 
 func (idx *ChainIndexer) Start() error {

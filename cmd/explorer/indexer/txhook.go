@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/cmd/gethext/reexec"
 	"github.com/ethereum/go-ethereum/common"
@@ -99,8 +98,9 @@ func (s *accountIndexCollector) AddHolder(addr common.Address) *accountIndexColl
 
 // txIndexHook collects various index data from the transaction being executed
 type txIndexHook struct {
-	data *indexData
-	lock sync.RWMutex
+	data         *indexData
+	tmpAccounts  map[common.Address]*AccountInfo
+	tmpContracts map[common.Address]*ContractInfo
 }
 
 func (h *txIndexHook) updateAccountInfo(addr common.Address) *accountInfoUpdater {
@@ -125,6 +125,8 @@ func (h *txIndexHook) updateAccountIndex(addr common.Address) *accountIndexColle
 }
 
 func (h *txIndexHook) OnTxStart(ctx *reexec.Context, gasLimit uint64) {
+	h.tmpAccounts = make(map[common.Address]*AccountInfo)
+	h.tmpContracts = make(map[common.Address]*ContractInfo)
 }
 
 func (h *txIndexHook) OnCallEnter(ctx *reexec.Context, call *reexec.CallFrame) {
@@ -144,18 +146,19 @@ func (p *txIndexHook) OnCallExit(ctx *reexec.Context, call *reexec.CallFrame) {
 func (p *txIndexHook) OnTxEnd(ctx *reexec.Context, ret *reexec.TxResult, restGas uint64) {
 	_, tx := ctx.Transaction()
 	sender, err := types.Sender(ctx.Signer(), tx)
-	if tx.To() == nil || err != nil {
+	if err != nil {
 		return
 	}
 	defer p.updateAccountIndex(sender).AddSentTx(tx.Hash())
-	if ret.Reverted {
-		return
-	}
-
 	if tx.Nonce() == 0 {
 		p.updateAccountInfo(sender).SetFirstTx(tx.Hash())
 		log.Info(fmt.Sprintf("Add new account %#v ", sender), "number", ctx.Block().NumberU64(), "tx", tx.Hash().Hex())
 	}
+
+	if ret.Reverted {
+		return
+	}
+
 }
 
 func newTxHook(block *types.Block) *txIndexHook {

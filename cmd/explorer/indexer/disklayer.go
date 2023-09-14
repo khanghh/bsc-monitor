@@ -47,7 +47,7 @@ func (dl *diskLayer) AccountInfo(addr common.Address) (*AccountInfo, error) {
 		dl.cache.Set(accKey[:], blob)
 	}
 	if len(blob) == 0 {
-		return nil, nil
+		return nil, ErrNoAccountInfo
 	}
 	accInfo := new(AccountInfo)
 	if err := rlp.DecodeBytes(blob, accInfo); err != nil {
@@ -70,7 +70,7 @@ func (dl *diskLayer) ContractInfo(addr common.Address) (*ContractInfo, error) {
 		dl.cache.Set(contractKey[:], blob)
 	}
 	if len(blob) == 0 {
-		return nil, nil
+		return nil, ErrNoContractInfo
 	}
 	contractInfo := new(ContractInfo)
 	if err := rlp.DecodeBytes(blob, contractInfo); err != nil {
@@ -93,23 +93,11 @@ func (dl *diskLayer) AccountStats(addr common.Address) (*AccountStats, error) {
 		dl.cache.Set(statsKey[:], blob)
 	}
 	if len(blob) == 0 {
-		return nil, nil
+		return nil, ErrNoAccountStats
 	}
 	accStats := new(AccountStats)
 	if err := rlp.DecodeBytes(blob, accStats); err != nil {
 		panic(err)
 	}
 	return accStats, nil
-}
-
-func (dl *diskLayer) Update(root common.Hash, data *indexData) *diffLayer {
-	return nil
-}
-
-func newDiskLayer(diskdb ethdb.KeyValueStore, triedb *trie.Database, root common.Hash, cache int) *diskLayer {
-	return &diskLayer{
-		diskdb: diskdb,
-		root:   root,
-		cache:  fastcache.New(cache * 1024 * 1024),
-	}
 }
